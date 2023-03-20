@@ -57,22 +57,48 @@ impl Job {
     fn run(&self, base_path: &str) {
         let mut buf = std::path::PathBuf::from(base_path);
         buf.push(&self.name);
-        let repo_dir = buf
-            .as_path()
-            .to_str()
-            .unwrap();
-        let clone_out = std::process::Command::new("git")
+        let repo_dir = buf.as_path().to_str().unwrap();
+
+        let result = match self.clone(repo_dir) {
+            Ok(clone_output) => {
+                let mut cmd = std::process::Command::new(&self.command);
+                for arg in self.args.iter() {
+                    cmd.arg(arg);
+                }
+                let command_output = cmd.current_dir(repo_dir).output().unwrap();
+                ExecutionResult::Execution {
+                    clone_output,
+                    command_output,
+                }
+            }
+            Err(output) => ExecutionResult::SourceFailure { output },
+        };
+        self.write_result(result, "");
+    }
+
+    fn clone(&self, repo_dir: &str) -> Result<std::process::Output, std::process::Output> {
+        let output = std::process::Command::new("git")
             .arg("clone")
             .arg(&self.source)
             .arg(repo_dir)
             .output()
             .unwrap();
-        println!("{:?}", clone_out);
-        let mut cmd = std::process::Command::new(&self.command);
-        for arg in self.args.iter() {
-            cmd.arg(arg);
+        if output.status.success() {
+            Ok(output)
+        } else {
+            Err(output)
         }
-        let output = cmd.current_dir(repo_dir).output().unwrap();
-        println!("{:?}", output);
     }
+
+    fn write_result(&self, result: ExecutionResult, path: &str) {}
+}
+
+enum ExecutionResult {
+    SourceFailure {
+        output: std::process::Output,
+    },
+    Execution {
+        clone_output: std::process::Output,
+        command_output: std::process::Output,
+    },
 }
