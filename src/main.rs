@@ -1,3 +1,5 @@
+use std::io::Write;
+
 use clap::Parser;
 use serde::{Deserialize, Serialize};
 
@@ -73,7 +75,20 @@ impl Job {
             }
             Err(output) => ExecutionResult::SourceFailure { output },
         };
-        self.write_result(result, "");
+
+        let mut buf = std::path::PathBuf::from(base_path);
+        buf.push("results");
+        buf.push(&self.name);
+        buf.push(format!(
+            "{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(buf.as_path()).unwrap();
+        buf.push("output.txt");
+        self.write_result(result, buf.as_path().to_str().unwrap());
     }
 
     fn clone(&self, repo_dir: &str) -> Result<std::process::Output, std::process::Output> {
@@ -90,7 +105,32 @@ impl Job {
         }
     }
 
-    fn write_result(&self, result: ExecutionResult, path: &str) {}
+    fn write_result(&self, result: ExecutionResult, path: &str) {
+        let mut file = std::fs::File::create(path).unwrap();
+        match result {
+            ExecutionResult::SourceFailure { output } => {
+                file.write_all("Source checkout failed\n".as_bytes())
+                    .unwrap();
+                file.write_all("git stdout:\n".as_bytes()).unwrap();
+                file.write_all(&output.stdout).unwrap();
+                file.write_all("git stderr:\n".as_bytes()).unwrap();
+                file.write_all(&output.stderr).unwrap();
+            }
+            ExecutionResult::Execution {
+                clone_output,
+                command_output,
+            } => {
+                file.write_all("git stdout:\n".as_bytes()).unwrap();
+                file.write_all(&clone_output.stdout).unwrap();
+                file.write_all("git stderr:\n".as_bytes()).unwrap();
+                file.write_all(&clone_output.stderr).unwrap();
+                file.write_all("job stdout:\n".as_bytes()).unwrap();
+                file.write_all(&command_output.stdout).unwrap();
+                file.write_all("job stderr:\n".as_bytes()).unwrap();
+                file.write_all(&command_output.stderr).unwrap();
+            }
+        }
+    }
 }
 
 enum ExecutionResult {
