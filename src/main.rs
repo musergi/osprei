@@ -63,19 +63,38 @@ impl Job {
         buf.push(&self.name);
         let repo_dir = buf.as_path().to_str().unwrap();
 
-        let result = match self.clone(repo_dir) {
-            Ok(clone_output) => {
-                let mut cmd = std::process::Command::new(&self.command);
-                for arg in self.args.iter() {
-                    cmd.arg(arg);
+        let result = match std::fs::metadata(repo_dir)
+            .map(|metadata| metadata.is_dir())
+            .unwrap_or(false)
+        {
+            true => match self.update(repo_dir) {
+                Ok(clone_output) => {
+                    let mut cmd = std::process::Command::new(&self.command);
+                    for arg in self.args.iter() {
+                        cmd.arg(arg);
+                    }
+                    let command_output = cmd.current_dir(repo_dir).output().unwrap();
+                    ExecutionResult::Execution {
+                        clone_output,
+                        command_output,
+                    }
                 }
-                let command_output = cmd.current_dir(repo_dir).output().unwrap();
-                ExecutionResult::Execution {
-                    clone_output,
-                    command_output,
+                Err(output) => ExecutionResult::SourceFailure { output },
+            },
+            false => match self.clone(repo_dir) {
+                Ok(clone_output) => {
+                    let mut cmd = std::process::Command::new(&self.command);
+                    for arg in self.args.iter() {
+                        cmd.arg(arg);
+                    }
+                    let command_output = cmd.current_dir(repo_dir).output().unwrap();
+                    ExecutionResult::Execution {
+                        clone_output,
+                        command_output,
+                    }
                 }
-            }
-            Err(output) => ExecutionResult::SourceFailure { output },
+                Err(output) => ExecutionResult::SourceFailure { output },
+            },
         };
 
         let mut buf = std::path::PathBuf::from(base_path);
@@ -91,6 +110,19 @@ impl Job {
         std::fs::create_dir_all(buf.as_path()).unwrap();
         buf.push("output.txt");
         self.write_result(result, buf.as_path().to_str().unwrap());
+    }
+
+    fn update(&self, repo_dir: &str) -> Result<std::process::Output, std::process::Output> {
+        let output = std::process::Command::new("git")
+            .arg("pull")
+            .current_dir(repo_dir)
+            .output()
+            .unwrap();
+        if output.status.success() {
+            Ok(output)
+        } else {
+            Err(output)
+        }
     }
 
     fn clone(&self, repo_dir: &str) -> Result<std::process::Output, std::process::Output> {
