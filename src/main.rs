@@ -1,6 +1,7 @@
 use std::io::Write;
 
 use clap::Parser;
+use log::{debug, error, info};
 use serde::{Deserialize, Serialize};
 
 /// Osprei CI server
@@ -14,18 +15,19 @@ struct Args {
 
 fn main() {
     let args = Args::parse();
-    println!("Reading configuration from {}", args.config_path);
+    pretty_env_logger::init();
+    info!("Reading configuration from {}", args.config_path);
     let config = Config::read(&args.config_path);
-    println!("Configuration: {:?}", config);
+    debug!("Configuration: {:?}", config);
     match std::fs::read_dir(&config.job_path) {
         Ok(job_paths) => {
             for path in job_paths {
                 let job = Job::read(path.unwrap().path().to_str().unwrap());
-                println!("Found job: {:?}", job);
+                debug!("Found job: {:?}", job);
                 job.run(&config.data_path);
             }
         }
-        Err(err) => println!("Job dir not found: {}", err),
+        Err(err) => error!("Job dir not found: {}", err),
     }
 }
 
@@ -109,6 +111,10 @@ impl Job {
         let mut file = std::fs::File::create(path).unwrap();
         match result {
             ExecutionResult::SourceFailure { output } => {
+                error!(
+                    "Error occured when performing git checkout, more info: {}",
+                    path
+                );
                 file.write_all("Source checkout failed\n".as_bytes())
                     .unwrap();
                 file.write_all("git stdout:\n".as_bytes()).unwrap();
@@ -128,6 +134,7 @@ impl Job {
                 file.write_all(&command_output.stdout).unwrap();
                 file.write_all("job stderr:\n".as_bytes()).unwrap();
                 file.write_all(&command_output.stderr).unwrap();
+                info!("Successfully executed job '{}' results: ", path);
             }
         }
     }
