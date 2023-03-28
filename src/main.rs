@@ -3,6 +3,7 @@ use std::{convert::Infallible, io::Write, net::SocketAddr};
 use clap::Parser;
 use log::{error, info};
 use serde::{Deserialize, Serialize};
+use sqlx::Pool;
 use warp::{reject::Reject, Filter};
 
 /// Osprei CI server
@@ -24,25 +25,33 @@ async fn main() {
         data_path,
         address,
     } = Config::read(&args.config_path);
+    let workspace_path = build_workspace(&data_path).await;
     let job_list = warp::path!("job")
-        .and(with_job_dir(job_path.clone()))
+        .and(with_string(job_path.clone()))
         .and_then(list_jobs);
     let job_get = warp::path!("job" / String)
-        .and(with_job_dir(job_path.clone()))
+        .and(with_string(job_path.clone()))
         .and_then(get_job);
     let job_run = warp::path!("job" / String / "run")
-        .and(with_job_dir(job_path.clone()))
-        .and(with_job_dir(data_path.clone()))
+        .and(with_string(job_path.clone()))
+        .and(with_string(workspace_path.clone()))
         .and_then(job_run);
     warp::serve(job_list.or(job_get).or(job_run))
         .run(address.parse::<SocketAddr>().unwrap())
         .await;
 }
 
-fn with_job_dir(
-    job_dir: String,
+async fn build_workspace(data_path: &str) -> String {
+    let mut buf = std::path::PathBuf::from(data_path);
+    buf.push("workspace");
+    tokio::fs::create_dir_all(&buf).await.unwrap();
+    buf.as_path().to_str().unwrap().to_string()
+}
+
+fn with_string(
+    string: String,
 ) -> impl Filter<Extract = (String,), Error = std::convert::Infallible> + Clone {
-    warp::any().map(move || job_dir.clone())
+    warp::any().map(move || string.clone())
 }
 
 async fn list_jobs(job_dir: String) -> Result<impl warp::Reply, Infallible> {
@@ -85,6 +94,47 @@ async fn job_run(
         .unwrap();
     job.arun(&data_dir).await;
     Ok(warp::reply::json(&String::from("ok")))
+}
+
+struct Database {
+    pool: sqlx::Pool<sqlx::Sqlite>,
+}
+
+impl Database {
+    async fn new(url: &str) -> Database {
+        let pool = sqlx::SqlitePool::connect(url).await.unwrap();
+        pool.acquire().await.unwrap();
+        Database { pool }
+    }
+
+    async fn run(self, mut rx: tokio::sync::mpsc::Receiver<DatabaseMessage>) {
+        while let Some(msg) = rx.recv().await {
+            match msg {
+                DatabaseMessage::CreateExecution { job_name, tx } => {
+                    let mut conn = self.pool.acquire().await.unwrap();
+                    let id = sqlx::query("INSERT INTO execution (job_name) VALUES ( ?1 )")
+                        .bind(job_name)
+                        .execute(&mut conn)
+                        .await
+                        .unwrap()
+                        .last_insert_rowid();
+                    sqlx::query("INSERT INTO start_log (execution_id, time) VALUES ( ?1 , CURRENT_TIMESTAMP )")
+                        .bind(id.clone())
+                        .execute(&mut conn)
+                        .await
+                        .unwrap();
+                    tx.send(id).unwrap()
+                }
+            }
+        }
+    }
+}
+
+enum DatabaseMessage {
+    CreateExecution {
+        job_name: String,
+        tx: tokio::sync::oneshot::Sender<i64>,
+    },
 }
 
 struct Model {
