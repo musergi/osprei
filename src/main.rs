@@ -1,8 +1,9 @@
-use std::io::Write;
+use std::{convert::Infallible, io::Write, net::SocketAddr};
 
 use clap::Parser;
-use log::{debug, error, info};
+use log::{error, info};
 use serde::{Deserialize, Serialize};
+use warp::{reject::Reject, Filter};
 
 /// Osprei CI server
 #[derive(Parser, Debug)]
@@ -13,21 +14,87 @@ struct Args {
     config_path: String,
 }
 
-fn main() {
+#[tokio::main]
+async fn main() {
     let args = Args::parse();
     pretty_env_logger::init();
     info!("Reading configuration from {}", args.config_path);
-    let config = Config::read(&args.config_path);
-    debug!("Configuration: {:?}", config);
-    match std::fs::read_dir(&config.job_path) {
-        Ok(job_paths) => {
-            for path in job_paths {
-                let job = Job::read(path.unwrap().path().to_str().unwrap());
-                debug!("Found job: {:?}", job);
-                job.run(&config.data_path);
-            }
-        }
-        Err(err) => error!("Job dir not found: {}", err),
+    let Config {
+        job_path,
+        data_path,
+        address,
+    } = Config::read(&args.config_path);
+    let job_list = warp::path!("job")
+        .and(with_job_dir(job_path.clone()))
+        .and_then(list_jobs);
+    let job_get = warp::path!("job" / String)
+        .and(with_job_dir(job_path.clone()))
+        .and_then(get_job);
+    let job_run = warp::path!("job" / String / "run")
+        .and(with_job_dir(job_path.clone()))
+        .and(with_job_dir(data_path.clone()))
+        .and_then(job_run);
+    warp::serve(job_list.or(job_get).or(job_run))
+        .run(address.parse::<SocketAddr>().unwrap())
+        .await;
+}
+
+fn with_job_dir(
+    job_dir: String,
+) -> impl Filter<Extract = (String,), Error = std::convert::Infallible> + Clone {
+    warp::any().map(move || job_dir.clone())
+}
+
+async fn list_jobs(job_dir: String) -> Result<impl warp::Reply, Infallible> {
+    let jobs: Vec<_> = jobs(job_dir)
+        .await
+        .into_iter()
+        .map(|Job { name, .. }| name)
+        .collect();
+    Ok(warp::reply::json(&jobs))
+}
+
+async fn get_job(job_name: String, job_dir: String) -> Result<impl warp::Reply, Infallible> {
+    let job = jobs(job_dir)
+        .await
+        .into_iter()
+        .find(|job| job.name == job_name)
+        .unwrap();
+    Ok(warp::reply::json(&job))
+}
+
+async fn jobs(job_dir: String) -> Vec<Job> {
+    let mut entries = tokio::fs::read_dir(job_dir).await.unwrap();
+    let mut jobs: Vec<Job> = Vec::new();
+    while let Some(entry) = entries.next_entry().await.unwrap() {
+        let job = Job::read(entry.path().to_str().unwrap());
+        jobs.push(job);
+    }
+    jobs
+}
+
+async fn job_run(
+    job_name: String,
+    job_dir: String,
+    data_dir: String,
+) -> Result<impl warp::Reply, Infallible> {
+    let job = jobs(job_dir)
+        .await
+        .into_iter()
+        .find(|job| job.name == job_name)
+        .unwrap();
+    job.arun(&data_dir).await;
+    Ok(warp::reply::json(&String::from("ok")))
+}
+
+struct Model {
+    job_dir: String,
+    data_dir: String,
+}
+
+impl Model {
+    fn new(job_dir: String, data_dir: String) -> Model {
+        Model { job_dir, data_dir }
     }
 }
 
@@ -35,6 +102,7 @@ fn main() {
 struct Config {
     job_path: String,
     data_path: String,
+    address: String,
 }
 
 impl Config {
@@ -56,6 +124,36 @@ impl Job {
     fn read(path: &str) -> Self {
         let file = std::fs::File::open(path).unwrap();
         serde_json::from_reader(file).unwrap()
+    }
+
+    async fn arun(&self, base_path: &str) {
+        let mut buf = std::path::PathBuf::from(base_path);
+        buf.push(&self.name);
+        let repo_dir = buf.as_path().to_str().unwrap();
+        let output = tokio::process::Command::new("git")
+            .arg("clone")
+            .arg(&self.source)
+            .arg(repo_dir)
+            .output()
+            .await
+            .unwrap();
+        info!(
+            "{}: checkout exit status: {}",
+            self.name,
+            output.status.code().unwrap_or(128)
+        );
+        if output.status.success() {
+            let mut cmd = tokio::process::Command::new(&self.command);
+            for arg in self.args.iter() {
+                cmd.arg(arg);
+            }
+            let command_output = cmd.current_dir(repo_dir).output().await.unwrap();
+            info!(
+                "{}: command exit status: {}",
+                self.name,
+                command_output.status.code().unwrap_or(128)
+            );
+        }
     }
 
     fn run(&self, base_path: &str) {
