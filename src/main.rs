@@ -3,8 +3,8 @@ use std::{convert::Infallible, io::Write, net::SocketAddr};
 use clap::Parser;
 use log::{error, info};
 use serde::{Deserialize, Serialize};
-use sqlx::Pool;
-use warp::{reject::Reject, Filter};
+use sqlx::{Pool, Row};
+use warp::Filter;
 
 /// Osprei CI server
 #[derive(Parser, Debug)]
@@ -25,6 +25,11 @@ async fn main() {
         data_path,
         address,
     } = Config::read(&args.config_path);
+    let mut buf = std::path::PathBuf::from(&data_path);
+    buf.push("data.sqlite");
+    let database = Database::new(buf.as_path().to_str().unwrap()).await;
+    let (tx, rx) = tokio::sync::mpsc::channel(100);
+    tokio::spawn(database.run(rx));
     let workspace_path = build_workspace(&data_path).await;
     let job_list = warp::path!("job")
         .and(with_string(job_path.clone()))
@@ -33,10 +38,14 @@ async fn main() {
         .and(with_string(job_path.clone()))
         .and_then(get_job);
     let job_run = warp::path!("job" / String / "run")
+        .and(with_db_tx(tx.clone()))
         .and(with_string(job_path.clone()))
         .and(with_string(workspace_path.clone()))
         .and_then(job_run);
-    warp::serve(job_list.or(job_get).or(job_run))
+    let job_last = warp::path!("job" / String / "last_start")
+        .and(with_db_tx(tx.clone()))
+        .and_then(job_last_start);
+    warp::serve(job_list.or(job_get).or(job_run).or(job_last))
         .run(address.parse::<SocketAddr>().unwrap())
         .await;
 }
@@ -52,6 +61,15 @@ fn with_string(
     string: String,
 ) -> impl Filter<Extract = (String,), Error = std::convert::Infallible> + Clone {
     warp::any().map(move || string.clone())
+}
+
+fn with_db_tx(
+    tx: tokio::sync::mpsc::Sender<DatabaseMessage>,
+) -> impl Filter<
+    Extract = (tokio::sync::mpsc::Sender<DatabaseMessage>,),
+    Error = std::convert::Infallible,
+> + Clone {
+    warp::any().map(move || tx.clone())
 }
 
 async fn list_jobs(job_dir: String) -> Result<impl warp::Reply, Infallible> {
@@ -84,6 +102,7 @@ async fn jobs(job_dir: String) -> Vec<Job> {
 
 async fn job_run(
     job_name: String,
+    tx: tokio::sync::mpsc::Sender<DatabaseMessage>,
     job_dir: String,
     data_dir: String,
 ) -> Result<impl warp::Reply, Infallible> {
@@ -92,8 +111,31 @@ async fn job_run(
         .into_iter()
         .find(|job| job.name == job_name)
         .unwrap();
+    let (db_tx, rx) = tokio::sync::oneshot::channel();
+    tx.send(DatabaseMessage::CreateExecution {
+        job_name,
+        tx: db_tx,
+    })
+    .await
+    .unwrap();
+    let status = rx.await.unwrap();
     job.arun(&data_dir).await;
-    Ok(warp::reply::json(&String::from("ok")))
+    Ok(warp::reply::json(&status))
+}
+
+async fn job_last_start(
+    job_name: String,
+    tx: tokio::sync::mpsc::Sender<DatabaseMessage>,
+) -> Result<impl warp::Reply, Infallible> {
+    let (db_tx, rx) = tokio::sync::oneshot::channel();
+    tx.send(DatabaseMessage::GetLastExecution {
+        job_name,
+        tx: db_tx,
+    })
+    .await
+    .unwrap();
+    let reponse = rx.await.unwrap();
+    Ok(warp::reply::json(&reponse))
 }
 
 struct Database {
@@ -125,16 +167,39 @@ impl Database {
                         .unwrap();
                     tx.send(id).unwrap()
                 }
+                DatabaseMessage::GetLastExecution { job_name, tx } => {
+                    let mut conn = self.pool.acquire().await.unwrap();
+                    let row = sqlx::query("SELECT job_name, time FROM execution INNER JOIN start_log WHERE job_name = ?1 ORDER BY time DESC LIMIT 1")
+                        .bind(job_name).fetch_one(&mut conn).await.unwrap();
+                    let job_name = row.try_get(0).unwrap();
+                    let start_time = row.try_get(1).unwrap();
+                    tx.send(LastExecution {
+                        job_name,
+                        start_time,
+                    })
+                    .unwrap();
+                }
             }
         }
     }
 }
 
+#[derive(Debug)]
 enum DatabaseMessage {
     CreateExecution {
         job_name: String,
         tx: tokio::sync::oneshot::Sender<i64>,
     },
+    GetLastExecution {
+        job_name: String,
+        tx: tokio::sync::oneshot::Sender<LastExecution>,
+    },
+}
+
+#[derive(Debug, Serialize)]
+struct LastExecution {
+    job_name: String,
+    start_time: String,
 }
 
 struct Model {
