@@ -2,8 +2,9 @@ use std::{convert::Infallible, io::Write, net::SocketAddr};
 
 use clap::Parser;
 use log::{error, info};
+use osprei::PathBuilder;
 use serde::{Deserialize, Serialize};
-use sqlx::{Pool, Row};
+use sqlx::Row;
 use warp::Filter;
 
 /// Osprei CI server
@@ -25,36 +26,41 @@ async fn main() {
         data_path,
         address,
     } = Config::read(&args.config_path);
-    let mut buf = std::path::PathBuf::from(&data_path);
-    buf.push("data.sqlite");
-    let database = Database::new(buf.as_path().to_str().unwrap()).await;
+    let path_builder = PathBuilder::new(job_path, data_path);
+    let database = Database::new(path_builder.database_path()).await;
     let (tx, rx) = tokio::sync::mpsc::channel(100);
     tokio::spawn(database.run(rx));
-    let workspace_path = build_workspace(&data_path).await;
+    build_workspace(path_builder.workspace_dir()).await;
     let job_list = warp::path!("job")
-        .and(with_string(job_path.clone()))
+        .and(with_string(path_builder.job_path().to_string()))
         .and_then(list_jobs);
     let job_get = warp::path!("job" / String)
-        .and(with_string(job_path.clone()))
+        .and(with_string(path_builder.job_path().to_string()))
         .and_then(get_job);
     let job_run = warp::path!("job" / String / "run")
         .and(with_db_tx(tx.clone()))
-        .and(with_string(job_path.clone()))
-        .and(with_string(workspace_path.clone()))
+        .and(with_string(path_builder.job_path().to_string()))
+        .and(with_string(path_builder.workspace_dir().to_string()))
         .and_then(job_run);
     let job_last = warp::path!("job" / String / "last_start")
         .and(with_db_tx(tx.clone()))
         .and_then(job_last_start);
-    warp::serve(job_list.or(job_get).or(job_run).or(job_last))
-        .run(address.parse::<SocketAddr>().unwrap())
-        .await;
+    let excution_list = warp::path!("job" / String / "execution")
+        .and(with_db_tx(tx.clone()))
+        .and_then(job_executions);
+    warp::serve(
+        job_list
+            .or(job_get)
+            .or(job_run)
+            .or(job_last)
+            .or(excution_list),
+    )
+    .run(address.parse::<SocketAddr>().unwrap())
+    .await;
 }
 
-async fn build_workspace(data_path: &str) -> String {
-    let mut buf = std::path::PathBuf::from(data_path);
-    buf.push("workspace");
-    tokio::fs::create_dir_all(&buf).await.unwrap();
-    buf.as_path().to_str().unwrap().to_string()
+async fn build_workspace(workspace_dir: &str) {
+    tokio::fs::create_dir_all(workspace_dir).await.unwrap();
 }
 
 fn with_string(
@@ -70,6 +76,18 @@ fn with_db_tx(
     Error = std::convert::Infallible,
 > + Clone {
     warp::any().map(move || tx.clone())
+}
+
+async fn job_executions(
+    _job_name: String,
+    _tx: tokio::sync::mpsc::Sender<DatabaseMessage>,
+) -> Result<impl warp::Reply, Infallible> {
+    Ok(warp::reply::json(&ExecutionList {
+        executions: vec![ExecutionSummary {
+            timestamp: String::from("2023-02-04 11:00:00"),
+            id: 3,
+        }],
+    }))
 }
 
 async fn list_jobs(job_dir: String) -> Result<impl warp::Reply, Infallible> {
@@ -200,6 +218,17 @@ enum DatabaseMessage {
 struct LastExecution {
     job_name: String,
     start_time: String,
+}
+
+#[derive(Debug, Serialize)]
+struct ExecutionList {
+    executions: Vec<ExecutionSummary>,
+}
+
+#[derive(Debug, Serialize)]
+struct ExecutionSummary {
+    id: i64,
+    timestamp: String,
 }
 
 struct Model {
