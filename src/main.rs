@@ -2,7 +2,7 @@ use std::{convert::Infallible, io::Write, net::SocketAddr};
 
 use clap::Parser;
 use log::{error, info};
-use osprei::PathBuilder;
+use osprei::{database::DatabasePersistance, PathBuilder};
 use serde::{Deserialize, Serialize};
 use sqlx::Row;
 use warp::Filter;
@@ -28,6 +28,8 @@ async fn main() {
     } = Config::read(&args.config_path);
     let path_builder = PathBuilder::new(job_path, data_path);
     let database = Database::new(path_builder.database_path()).await;
+    let persistance =
+        osprei::database::DatabasePersistance::new(path_builder.database_path()).await;
     let (tx, rx) = tokio::sync::mpsc::channel(100);
     tokio::spawn(database.run(rx));
     build_workspace(path_builder.workspace_dir()).await;
@@ -38,25 +40,16 @@ async fn main() {
         .and(with_string(path_builder.job_path().to_string()))
         .and_then(get_job);
     let job_run = warp::path!("job" / String / "run")
-        .and(with_db_tx(tx.clone()))
+        .and(with_persistance(persistance.clone()))
         .and(with_string(path_builder.job_path().to_string()))
         .and(with_string(path_builder.workspace_dir().to_string()))
         .and_then(job_run);
-    let job_last = warp::path!("job" / String / "last_start")
-        .and(with_db_tx(tx.clone()))
-        .and_then(job_last_start);
     let excution_list = warp::path!("job" / String / "execution")
         .and(with_db_tx(tx.clone()))
         .and_then(job_executions);
-    warp::serve(
-        job_list
-            .or(job_get)
-            .or(job_run)
-            .or(job_last)
-            .or(excution_list),
-    )
-    .run(address.parse::<SocketAddr>().unwrap())
-    .await;
+    warp::serve(job_list.or(job_get).or(job_run).or(excution_list))
+        .run(address.parse::<SocketAddr>().unwrap())
+        .await;
 }
 
 async fn build_workspace(workspace_dir: &str) {
@@ -67,6 +60,13 @@ fn with_string(
     string: String,
 ) -> impl Filter<Extract = (String,), Error = std::convert::Infallible> + Clone {
     warp::any().map(move || string.clone())
+}
+
+fn with_persistance(
+    db: osprei::database::DatabasePersistance,
+) -> impl Filter<Extract = (osprei::database::DatabasePersistance,), Error = std::convert::Infallible>
+       + Clone {
+    warp::any().map(move || db.clone())
 }
 
 fn with_db_tx(
@@ -120,7 +120,7 @@ async fn jobs(job_dir: String) -> Vec<Job> {
 
 async fn job_run(
     job_name: String,
-    tx: tokio::sync::mpsc::Sender<DatabaseMessage>,
+    persistance: impl osprei::database::Persistance + Send + Sync + 'static,
     job_dir: String,
     data_dir: String,
 ) -> Result<impl warp::Reply, Infallible> {
@@ -129,16 +129,21 @@ async fn job_run(
         .into_iter()
         .find(|job| job.name == job_name)
         .unwrap();
-    let (db_tx, rx) = tokio::sync::oneshot::channel();
-    tx.send(DatabaseMessage::CreateExecution {
-        job_name,
-        tx: db_tx,
-    })
-    .await
-    .unwrap();
-    let status = rx.await.unwrap();
+    let index = persistance.create_execution(job_name).await;
+    tokio::spawn(async move {
+        excute_job(persistance, job, data_dir, index).await;
+    });
+    Ok(warp::reply::json(&index))
+}
+
+async fn excute_job(
+    persistance: impl osprei::database::Persistance,
+    job: Job,
+    data_dir: String,
+    execution_id: i64,
+) {
     job.arun(&data_dir).await;
-    Ok(warp::reply::json(&status))
+    persistance.set_execution_status(execution_id, 0).await;
 }
 
 async fn job_last_start(
