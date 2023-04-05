@@ -43,11 +43,21 @@ fn build_database_path(data_path: &str) -> String {
 
 pub mod database {
     use log::info;
+    use sqlx::Row;
 
     #[async_trait::async_trait]
     pub trait Persistance {
         async fn create_execution(&self, job_name: String) -> i64;
         async fn set_execution_status(&self, execution_id: i64, execution_status: i64);
+        async fn get_execution(&self, execution_id: i64) -> ExecutionDetails;
+    }
+
+    #[derive(Debug, serde::Serialize)]
+    pub struct ExecutionDetails {
+        execution_id: i64,
+        job_name: String,
+        start_time: String,
+        status: Option<i64>,
     }
 
     #[derive(Debug, Clone)]
@@ -94,6 +104,27 @@ pub mod database {
                 .await
                 .unwrap();
             info!("Updated executions {}", execution_id);
+        }
+
+        async fn get_execution(&self, execution_id: i64) -> ExecutionDetails {
+            info!("Fetching execution with id {}", execution_id);
+            let mut conn = self.pool.acquire().await.unwrap();
+            let row =
+                sqlx::query("SELECT id, job_name, start_time, status FROM execution WHERE id = ?1")
+                    .bind(execution_id)
+                    .fetch_one(&mut conn)
+                    .await
+                    .unwrap();
+            let execution_id = row.try_get(0).unwrap();
+            let job_name = row.try_get(1).unwrap();
+            let start_time = row.try_get(2).unwrap();
+            let status = row.try_get(3).unwrap();
+            ExecutionDetails {
+                execution_id,
+                job_name,
+                start_time,
+                status,
+            }
         }
     }
 }

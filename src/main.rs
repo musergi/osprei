@@ -44,12 +44,21 @@ async fn main() {
         .and(with_string(path_builder.job_path().to_string()))
         .and(with_string(path_builder.workspace_dir().to_string()))
         .and_then(job_run);
-    let excution_list = warp::path!("job" / String / "execution")
+    let execution_list = warp::path!("job" / String / "execution")
         .and(with_db_tx(tx.clone()))
         .and_then(job_executions);
-    warp::serve(job_list.or(job_get).or(job_run).or(excution_list))
-        .run(address.parse::<SocketAddr>().unwrap())
-        .await;
+    let execution_get = warp::path!("execution" / i64)
+        .and(with_persistance(persistance.clone()))
+        .and_then(execution_details);
+    warp::serve(
+        job_list
+            .or(job_get)
+            .or(job_run)
+            .or(execution_list)
+            .or(execution_get),
+    )
+    .run(address.parse::<SocketAddr>().unwrap())
+    .await;
 }
 
 async fn build_workspace(workspace_dir: &str) {
@@ -76,6 +85,14 @@ fn with_db_tx(
     Error = std::convert::Infallible,
 > + Clone {
     warp::any().map(move || tx.clone())
+}
+
+async fn execution_details(
+    execution_id: i64,
+    persistance: impl osprei::database::Persistance,
+) -> Result<impl warp::Reply, Infallible> {
+    let execution = persistance.get_execution(execution_id).await;
+    Ok(warp::reply::json(&execution))
 }
 
 async fn job_executions(
