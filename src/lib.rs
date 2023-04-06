@@ -50,6 +50,7 @@ pub mod database {
         async fn create_execution(&self, job_name: String) -> i64;
         async fn set_execution_status(&self, execution_id: i64, execution_status: i64);
         async fn get_execution(&self, execution_id: i64) -> ExecutionDetails;
+        async fn last_executions(&self, job_name: String, limit: i64) -> Vec<ExecutionSummary>;
     }
 
     #[derive(Debug, serde::Serialize)]
@@ -58,6 +59,12 @@ pub mod database {
         job_name: String,
         start_time: String,
         status: Option<i64>,
+    }
+
+    #[derive(Debug, serde::Serialize)]
+    pub struct ExecutionSummary {
+        pub id: i64,
+        pub start_time: String,
     }
 
     #[derive(Debug, Clone)]
@@ -125,6 +132,19 @@ pub mod database {
                 start_time,
                 status,
             }
+        }
+
+        async fn last_executions(&self, job_name: String, limit: i64) -> Vec<ExecutionSummary> {
+            info!(
+                "Fetching last ({}) executions for job_name: {}",
+                limit, job_name
+            );
+            let mut conn = self.pool.acquire().await.unwrap();
+            sqlx::query("SELECT id, start_time FROM execution WHERE job_name = ?1 ORDER BY start_time DESC LIMIT ?2").bind(job_name).bind(limit).fetch_all(&mut conn).await.unwrap().into_iter().map(|row| {
+                let id = row.try_get(0).unwrap();
+                let start_time = row.try_get(1).unwrap();
+                ExecutionSummary { id, start_time}
+            }).collect()
         }
     }
 }
