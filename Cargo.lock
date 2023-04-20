@@ -1074,6 +1074,9 @@ dependencies = [
 name = "osprei-gui"
 version = "0.1.0"
 dependencies = [
+ "gloo-net",
+ "serde",
+ "wasm-bindgen-futures",
  "web-sys",
  "yew",
 ]
