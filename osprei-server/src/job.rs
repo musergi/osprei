@@ -1,13 +1,16 @@
 use log::{info, warn};
 
+pub use model::Job;
+pub use model::Stage;
+
 mod model {
-    #[derive(Debug, serde::Deserialize)]
+    #[derive(Debug, serde::Deserialize, serde::Serialize)]
     pub struct Job {
         pub name: String,
         pub stages: Vec<Stage>,
     }
 
-    #[derive(Debug, serde::Deserialize)]
+    #[derive(Debug, serde::Deserialize, serde::Serialize)]
     #[serde(tag = "type")]
     pub enum Stage {
         Command {

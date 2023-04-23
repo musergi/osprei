@@ -6,6 +6,8 @@ use osprei::PathBuilder;
 use serde::{Deserialize, Serialize};
 use warp::Filter;
 
+mod job;
+
 /// Osprei CI server
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -47,11 +49,15 @@ async fn main() {
         .and(with_persistance(persistance.clone()))
         .and_then(execution_details);
     warp::serve(
-        job_list
-            .or(job_get)
-            .or(job_run)
-            .or(execution_list)
-            .or(execution_get),
+        warp::any()
+            .and(
+                job_list
+                    .or(job_get)
+                    .or(job_run)
+                    .or(execution_list)
+                    .or(execution_get),
+            )
+            .with(warp::cors().allow_any_origin()),
     )
     .run(address.parse::<SocketAddr>().unwrap())
     .await;
@@ -94,7 +100,7 @@ async fn list_jobs(job_dir: String) -> Result<impl warp::Reply, Infallible> {
     let jobs: Vec<_> = jobs(job_dir)
         .await
         .into_iter()
-        .map(|Job { name, .. }| name)
+        .map(|job::Job { name, .. }| name)
         .collect();
     Ok(warp::reply::json(&jobs))
 }
@@ -108,11 +114,13 @@ async fn get_job(job_name: String, job_dir: String) -> Result<impl warp::Reply, 
     Ok(warp::reply::json(&job))
 }
 
-async fn jobs(job_dir: String) -> Vec<Job> {
+async fn jobs(job_dir: String) -> Vec<job::Job> {
     let mut entries = tokio::fs::read_dir(job_dir).await.unwrap();
-    let mut jobs: Vec<Job> = Vec::new();
+    let mut jobs: Vec<job::Job> = Vec::new();
     while let Some(entry) = entries.next_entry().await.unwrap() {
-        let job = Job::read(entry.path().to_str().unwrap());
+        let path = entry.path().to_str().unwrap().to_string();
+        let string = tokio::fs::read_to_string(path).await.unwrap();
+        let job = serde_json::from_str(&string).unwrap();
         jobs.push(job);
     }
     jobs
@@ -130,9 +138,6 @@ async fn job_run(
         .find(|job| job.name == job_name)
         .unwrap();
     let index = persistance.create_execution(job_name).await;
-    tokio::spawn(async move {
-        excute_job(persistance, job, data_dir, index).await;
-    });
     Ok(warp::reply::json(&index))
 }
 
