@@ -1059,15 +1059,9 @@ checksum = "b7e5500299e16ebb147ae15a00a942af264cf3688f47923b8fc2cd5858f23ad3"
 name = "osprei"
 version = "0.1.0"
 dependencies = [
- "async-trait",
- "clap",
  "log",
- "pretty_env_logger",
  "serde",
- "serde_json",
- "sqlx",
  "tokio",
- "warp",
 ]
 
 [[package]]
@@ -1079,6 +1073,22 @@ dependencies = [
  "wasm-bindgen-futures",
  "web-sys",
  "yew",
+]
+
+[[package]]
+name = "osprei-server"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "clap",
+ "log",
+ "osprei",
+ "pretty_env_logger",
+ "serde",
+ "serde_json",
+ "sqlx",
+ "tokio",
+ "warp",
 ]
 
 [[package]]

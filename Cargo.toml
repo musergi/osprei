@@ -2,5 +2,6 @@
 
 members = [
     "osprei-server",
-    "osprei-gui"
+    "osprei-gui",
+    "osprei"
 ]

@@ -2,7 +2,6 @@ use std::{convert::Infallible, net::SocketAddr};
 
 use clap::Parser;
 use log::info;
-use osprei::PathBuilder;
 use serde::{Deserialize, Serialize};
 use warp::Filter;
 
@@ -27,9 +26,9 @@ async fn main() {
         data_path,
         address,
     } = Config::read(&args.config_path);
-    let path_builder = PathBuilder::new(job_path, data_path);
+    let path_builder = osprei_server::PathBuilder::new(job_path, data_path);
     let persistance =
-        osprei::database::DatabasePersistance::new(path_builder.database_path()).await;
+        osprei_server::database::DatabasePersistance::new(path_builder.database_path()).await;
     build_workspace(path_builder.workspace_dir()).await;
     let job_list = warp::path!("job")
         .and(with_string(path_builder.job_path().to_string()))
@@ -74,15 +73,17 @@ fn with_string(
 }
 
 fn with_persistance(
-    db: osprei::database::DatabasePersistance,
-) -> impl Filter<Extract = (osprei::database::DatabasePersistance,), Error = std::convert::Infallible>
-       + Clone {
+    db: osprei_server::database::DatabasePersistance,
+) -> impl Filter<
+    Extract = (osprei_server::database::DatabasePersistance,),
+    Error = std::convert::Infallible,
+> + Clone {
     warp::any().map(move || db.clone())
 }
 
 async fn execution_details(
     execution_id: i64,
-    persistance: impl osprei::database::Persistance,
+    persistance: impl osprei_server::database::Persistance,
 ) -> Result<impl warp::Reply, Infallible> {
     let execution = persistance.get_execution(execution_id).await;
     Ok(warp::reply::json(&execution))
@@ -90,7 +91,7 @@ async fn execution_details(
 
 async fn job_executions(
     job_name: String,
-    persistance: impl osprei::database::Persistance,
+    persistance: impl osprei_server::database::Persistance,
 ) -> Result<impl warp::Reply, Infallible> {
     let executions = persistance.last_executions(job_name, 10).await;
     Ok(warp::reply::json(&executions))
@@ -128,7 +129,7 @@ async fn jobs(job_dir: String) -> Vec<job::Job> {
 
 async fn job_run(
     job_name: String,
-    persistance: impl osprei::database::Persistance + Send + Sync + 'static,
+    persistance: impl osprei_server::database::Persistance + Send + Sync + 'static,
     job_dir: String,
     data_dir: String,
 ) -> Result<impl warp::Reply, Infallible> {
@@ -139,16 +140,6 @@ async fn job_run(
         .unwrap();
     let index = persistance.create_execution(job_name).await;
     Ok(warp::reply::json(&index))
-}
-
-async fn excute_job(
-    persistance: impl osprei::database::Persistance,
-    job: Job,
-    data_dir: String,
-    execution_id: i64,
-) {
-    job.arun(&data_dir).await;
-    persistance.set_execution_status(execution_id, 0).await;
 }
 
 #[derive(Debug, Serialize)]
@@ -173,50 +164,5 @@ impl Config {
     fn read(path: &str) -> Self {
         let file = std::fs::File::open(path).unwrap();
         serde_json::from_reader(file).unwrap()
-    }
-}
-
-#[derive(Deserialize, Serialize, Debug)]
-struct Job {
-    name: String,
-    source: String,
-    command: String,
-    args: Vec<String>,
-}
-
-impl Job {
-    fn read(path: &str) -> Self {
-        let file = std::fs::File::open(path).unwrap();
-        serde_json::from_reader(file).unwrap()
-    }
-
-    async fn arun(&self, base_path: &str) {
-        let mut buf = std::path::PathBuf::from(base_path);
-        buf.push(&self.name);
-        let repo_dir = buf.as_path().to_str().unwrap();
-        let output = tokio::process::Command::new("git")
-            .arg("clone")
-            .arg(&self.source)
-            .arg(repo_dir)
-            .output()
-            .await
-            .unwrap();
-        info!(
-            "{}: checkout exit status: {}",
-            self.name,
-            output.status.code().unwrap_or(128)
-        );
-        if output.status.success() {
-            let mut cmd = tokio::process::Command::new(&self.command);
-            for arg in self.args.iter() {
-                cmd.arg(arg);
-            }
-            let command_output = cmd.current_dir(repo_dir).output().await.unwrap();
-            info!(
-                "{}: command exit status: {}",
-                self.name,
-                command_output.status.code().unwrap_or(128)
-            );
-        }
     }
 }
