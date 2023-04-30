@@ -1,9 +1,10 @@
-html, body, ul, li {
+html, body, ul, li, button {
 	all: unset;
 }
 
 html {
-	font-family: 'Open Sans', sans-serif;
+	font-family: 'Anonymous Pro', monospace;
+	font-size: 24px;
 	color: black;
 }
 
@@ -32,4 +33,23 @@ ul {
 	flex-direction: column;
 
 	text-align: center;
+}
+
+.job-card h3 {
+	margin: 0.25em 0;
+}
+
+.job-card button {
+	padding: 0.5em;
+
+	border-width: 1px;
+	border-color: black;
+	border-style: solid;
+	border-radius: 0.25em;
+}
+
+.job-card button:hover {
+	cursor: pointer;
+	color: white;
+	background-color: black;
 }

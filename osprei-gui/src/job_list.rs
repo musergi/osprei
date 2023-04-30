@@ -36,8 +36,9 @@ fn JobCard(props: &CardProps) -> Html {
     }).collect();
     html! {
         <li class={"job-card"}>
-            <h3>{job_name}</h3>
-            <p>{job_status}</p>
+            <h3>{ job_name }</h3>
+            <p>{ job_status }</p>
+            <button>{ "Run" }</button>
         </li>
     }
 }
