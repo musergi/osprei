@@ -1,5 +1,6 @@
 use yew::prelude::*;
-use log::info;
+use log::{error, info, debug};
+use gloo_net::http::Request;
 
 #[derive(Properties, PartialEq)]
 pub struct Props {
@@ -30,17 +31,42 @@ struct CardProps {
 
 #[function_component]
 fn JobCard(props: &CardProps) -> Html {
-    info!("Created component JobCard: {:?}", props);
+    debug!("Created component JobCard: {:?}", props);
     let CardProps {job_name, job_status} = props;
-    let job_name: String = job_name.to_uppercase().chars().map(|c| match c {
+    let display_job_name: String = job_name.to_uppercase().chars().map(|c| match c {
         '_' => ' ',
         c => c,
     }).collect();
+    let job_name = job_name.clone();
+    let run_callback = Callback::from(move |_| {
+        info!("Run pressed for {}", job_name);
+        let url = format!("http://localhost:10000/job/{}/run", job_name);
+        info!("Sending request to {}", url);
+        wasm_bindgen_futures::spawn_local(async move {
+            match Request::get(&url)
+                .send()
+                .await {
+                Ok(response) => {
+                    info!("Recieved response: {}", response.status());
+                    match response.json::<i64>().await {
+                        Ok(id) => info!("Successfully created execution with id {}", id),
+                        Err(err) => {
+                            error!("Deserialization error: {}", err);
+                        }
+                    }
+                },
+                Err(err) => {
+                    error!("Request to {} failed: {}", url, err)
+                }
+                
+            }
+        });
+    });
     html! {
         <li class={"job-card"}>
-            <h3>{ job_name }</h3>
+            <h3>{ display_job_name }</h3>
             <p>{ job_status }</p>
-            <button>{ "Run" }</button>
+            <button onclick={run_callback}>{ "Run" }</button>
         </li>
     }
 }
