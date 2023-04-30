@@ -1,4 +1,5 @@
 use yew::prelude::*;
+use log::info;
 
 #[derive(Properties, PartialEq)]
 pub struct Props {
@@ -21,7 +22,7 @@ pub fn JobList(props: &Props) -> Html {
     }
 }
 
-#[derive(Properties, PartialEq)]
+#[derive(Properties, PartialEq, Debug)]
 struct CardProps {
     job_name: String,
     job_status: String,
@@ -29,6 +30,7 @@ struct CardProps {
 
 #[function_component]
 fn JobCard(props: &CardProps) -> Html {
+    info!("Created component JobCard: {:?}", props);
     let CardProps {job_name, job_status} = props;
     let job_name: String = job_name.to_uppercase().chars().map(|c| match c {
         '_' => ' ',
