@@ -1,11 +1,9 @@
 use std::{convert::Infallible, net::SocketAddr};
 
 use clap::Parser;
-use log::info;
+use log::{error, info};
 use serde::{Deserialize, Serialize};
 use warp::Filter;
-
-mod job;
 
 /// Osprei CI server
 #[derive(Parser, Debug)]
@@ -101,7 +99,7 @@ async fn list_jobs(job_dir: String) -> Result<impl warp::Reply, Infallible> {
     let jobs: Vec<_> = jobs(job_dir)
         .await
         .into_iter()
-        .map(|job::Job { name, .. }| name)
+        .map(|osprei::Job { name, .. }| name)
         .collect();
     Ok(warp::reply::json(&jobs))
 }
@@ -115,9 +113,9 @@ async fn get_job(job_name: String, job_dir: String) -> Result<impl warp::Reply, 
     Ok(warp::reply::json(&job))
 }
 
-async fn jobs(job_dir: String) -> Vec<job::Job> {
+async fn jobs(job_dir: String) -> Vec<osprei::Job> {
     let mut entries = tokio::fs::read_dir(job_dir).await.unwrap();
-    let mut jobs: Vec<job::Job> = Vec::new();
+    let mut jobs: Vec<osprei::Job> = Vec::new();
     while let Some(entry) = entries.next_entry().await.unwrap() {
         let path = entry.path().to_str().unwrap().to_string();
         let string = tokio::fs::read_to_string(path).await.unwrap();
@@ -138,7 +136,27 @@ async fn job_run(
         .into_iter()
         .find(|job| job.name == job_name)
         .unwrap();
-    let index = persistance.create_execution(job_name).await;
+    let index = persistance.create_execution(job_name.clone()).await;
+    let mut job_runner = osprei::JobRunner::new(&job_name, &data_dir);
+    {
+        let execution_id = index.clone();
+        tokio::spawn(async move {
+            match job_runner.execute(job).await {
+                Ok(res) => {
+                    info!("Successfull execution of {}: {:?}", job_name, res);
+                    let status = match res.iter().any(|status| status.status != 0) {
+                        true => 1,
+                        false => 0,
+                    };
+                    persistance.set_execution_status(execution_id, status).await;
+                }
+                Err(err) => {
+                    error!("An error occured while executing: {}: {}", job_name, err);
+                    persistance.set_execution_status(execution_id, 1).await;
+                }
+            }
+        });
+    }
     Ok(warp::reply::json(&index))
 }
 
