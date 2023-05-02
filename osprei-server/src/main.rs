@@ -137,7 +137,7 @@ async fn job_run(
         .find(|job| job.name == job_name)
         .unwrap();
     let index = persistance.create_execution(job_name.clone()).await;
-    let mut job_runner = osprei::JobRunner::new(&job_name, &data_dir);
+    let mut job_runner = osprei_server::execute::JobRunner::new(&job_name, &data_dir);
     {
         let execution_id = index.clone();
         tokio::spawn(async move {

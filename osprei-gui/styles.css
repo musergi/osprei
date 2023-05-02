@@ -1,4 +1,8 @@
-html, body, ul, li, button {
+html,
+body,
+ul,
+li,
+button {
 	all: unset;
 }
 
@@ -24,7 +28,7 @@ ul {
 .job-card {
 	padding: 1em 2em;
 
-	border-width: 1px;
+	border-width: 3px;
 	border-color: black;
 	border-style: solid;
 	border-radius: 1em;
@@ -39,6 +43,10 @@ ul {
 	margin: 0.25em 0;
 }
 
+.job-card p {
+	margin: .1em;
+}
+
 .job-card button {
 	padding: 0.5em;
 
@@ -46,6 +54,8 @@ ul {
 	border-color: black;
 	border-style: solid;
 	border-radius: 0.25em;
+
+	margin: .5em
 }
 
 .job-card button:hover {

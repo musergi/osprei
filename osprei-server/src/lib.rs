@@ -1,3 +1,5 @@
+pub mod execute;
+
 #[derive(Debug)]
 pub struct PathBuilder {
     job_path: String,
@@ -49,22 +51,12 @@ pub mod database {
     pub trait Persistance {
         async fn create_execution(&self, job_name: String) -> i64;
         async fn set_execution_status(&self, execution_id: i64, execution_status: i64);
-        async fn get_execution(&self, execution_id: i64) -> ExecutionDetails;
-        async fn last_executions(&self, job_name: String, limit: i64) -> Vec<ExecutionSummary>;
-    }
-
-    #[derive(Debug, serde::Serialize)]
-    pub struct ExecutionDetails {
-        execution_id: i64,
-        job_name: String,
-        start_time: String,
-        status: Option<i64>,
-    }
-
-    #[derive(Debug, serde::Serialize)]
-    pub struct ExecutionSummary {
-        pub id: i64,
-        pub start_time: String,
+        async fn get_execution(&self, execution_id: i64) -> osprei::ExecutionDetails;
+        async fn last_executions(
+            &self,
+            job_name: String,
+            limit: i64,
+        ) -> Vec<osprei::ExecutionSummary>;
     }
 
     #[derive(Debug, Clone)]
@@ -113,7 +105,7 @@ pub mod database {
             info!("Updated executions {}", execution_id);
         }
 
-        async fn get_execution(&self, execution_id: i64) -> ExecutionDetails {
+        async fn get_execution(&self, execution_id: i64) -> osprei::ExecutionDetails {
             info!("Fetching execution with id {}", execution_id);
             let mut conn = self.pool.acquire().await.unwrap();
             let row =
@@ -126,7 +118,7 @@ pub mod database {
             let job_name = row.try_get(1).unwrap();
             let start_time = row.try_get(2).unwrap();
             let status = row.try_get(3).unwrap();
-            ExecutionDetails {
+            osprei::ExecutionDetails {
                 execution_id,
                 job_name,
                 start_time,
@@ -134,7 +126,11 @@ pub mod database {
             }
         }
 
-        async fn last_executions(&self, job_name: String, limit: i64) -> Vec<ExecutionSummary> {
+        async fn last_executions(
+            &self,
+            job_name: String,
+            limit: i64,
+        ) -> Vec<osprei::ExecutionSummary> {
             info!(
                 "Fetching last ({}) executions for job_name: {}",
                 limit, job_name
@@ -143,7 +139,7 @@ pub mod database {
             sqlx::query("SELECT id, start_time FROM execution WHERE job_name = ?1 ORDER BY start_time DESC LIMIT ?2").bind(job_name).bind(limit).fetch_all(&mut conn).await.unwrap().into_iter().map(|row| {
                 let id = row.try_get(0).unwrap();
                 let start_time = row.try_get(1).unwrap();
-                ExecutionSummary { id, start_time}
+                osprei::ExecutionSummary { id, start_time}
             }).collect()
         }
     }
