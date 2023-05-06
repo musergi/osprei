@@ -49,6 +49,7 @@ pub mod database {
 
     #[async_trait::async_trait]
     pub trait Persistance {
+        async fn init(&self);
         async fn create_execution(&self, job_name: String) -> i64;
         async fn set_execution_status(&self, execution_id: i64, execution_status: i64);
         async fn get_execution(&self, execution_id: i64) -> osprei::ExecutionDetails;
@@ -75,6 +76,18 @@ pub mod database {
 
     #[async_trait::async_trait]
     impl Persistance for DatabasePersistance {
+        async fn init(&self) {
+            info!("Initializing database");
+            let mut conn = self.pool.acquire().await.unwrap();
+            let canceled_executions =
+                sqlx::query("UPDATE execution SET status = 2 WHERE status IS NULL")
+                    .execute(&mut conn)
+                    .await
+                    .unwrap()
+                    .rows_affected();
+            info!("Executions marked as canceled: {}", canceled_executions);
+        }
+
         async fn create_execution(&self, job_name: String) -> i64 {
             info!("Creating database execution entry for: {}", job_name);
             let mut conn = self.pool.acquire().await.unwrap();

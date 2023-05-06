@@ -137,7 +137,8 @@ fn JobCard(props: &CardProps) -> Html {
         .map(|execution| match execution.status {
             Some(0) => String::from("Success"),
             Some(1) => String::from("Failure"),
-            None => String::from("Not finished"),
+            Some(2) => String::from("Canceled"),
+            None => String::from("Executing"),
             _ => String::from("Unknown"),
         })
         .unwrap_or_else(|| String::from("Not loaded"));

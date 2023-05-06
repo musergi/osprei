@@ -2,6 +2,8 @@ use std::{convert::Infallible, net::SocketAddr};
 
 use clap::Parser;
 use log::{error, info};
+use osprei_server::database::DatabasePersistance;
+use osprei_server::database::Persistance;
 use serde::{Deserialize, Serialize};
 use warp::Filter;
 
@@ -25,8 +27,8 @@ async fn main() {
         address,
     } = Config::read(&args.config_path);
     let path_builder = osprei_server::PathBuilder::new(job_path, data_path);
-    let persistance =
-        osprei_server::database::DatabasePersistance::new(path_builder.database_path()).await;
+    let persistance = DatabasePersistance::new(path_builder.database_path()).await;
+    persistance.init().await;
     build_workspace(path_builder.workspace_dir()).await;
     let job_list = warp::path!("job")
         .and(with_string(path_builder.job_path().to_string()))
@@ -71,11 +73,8 @@ fn with_string(
 }
 
 fn with_persistance(
-    db: osprei_server::database::DatabasePersistance,
-) -> impl Filter<
-    Extract = (osprei_server::database::DatabasePersistance,),
-    Error = std::convert::Infallible,
-> + Clone {
+    db: DatabasePersistance,
+) -> impl Filter<Extract = (DatabasePersistance,), Error = std::convert::Infallible> + Clone {
     warp::any().map(move || db.clone())
 }
 
