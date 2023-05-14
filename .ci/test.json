@@ -1,0 +1,11 @@
+{
+    "stages": [
+        {
+            "cmd": "cargo",
+            "args": [
+                "test"
+            ],
+            "path": "."
+        }
+    ]
+}
