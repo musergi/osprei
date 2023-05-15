@@ -18,25 +18,19 @@ For listing all the jobs an endpoint is available, it will provide a list of str
 ```
 ```json
 [
-  "job1_name",
-  "job2_name"
+  0,
+  1
 ]
 ```
 
-For fetching the definition of any particular job the `/job/<job-name>` endpoint can be used. It will provide the job config file.
+For fetching the definition of any particular job the `/job/<job-id>` endpoint can be used. It will provide the job config file.
 ```
-/job/job1_name
+/job/0
 ```
 ```json
 {
-  "name": "job1_name",
   "stages": [
     {
-      "type": "Source",
-      "repository_url": "https://github.com/musergi/osprei.git"
-    },
-    {
-      "type": "Command",
       "cmd": "cargo",
       "args": [
         "test"
@@ -47,17 +41,17 @@ For fetching the definition of any particular job the `/job/<job-name>` endpoint
 }
 ```
 
-To run a job, simply send a request to `/job/<job-name>/run`, this will automatically start the execution of the job. As a response this endpoint will return the execution id asigned to the job.
+To run a job, simply send a request to `/job/<job-id>/run`, this will automatically start the execution of the job. As a response this endpoint will return the execution id asigned to the job.
 ```
-/job/job1_name/run
+/job/0/run
 ```
 ```json
 1
 ```
 
-You can list the 10 most recen executions of a job by sending a request to `/job/<job-name>/executions`.
+You can list the 10 most recen executions of a job by sending a request to `/job/<job-id>/executions`.
 ```
-/job/job1_name/executions
+/job/0/executions
 ```
 ```json
 [

@@ -1,20 +1,38 @@
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 pub struct Job {
-    pub name: String,
     pub stages: Vec<Stage>,
 }
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
-#[serde(tag = "type")]
-pub enum Stage {
-    Command {
-        cmd: String,
-        args: Vec<String>,
-        path: String,
-    },
-    Source {
-        repository_url: String,
-    },
+pub struct Stage {
+    /// Command to run
+    pub cmd: String,
+    /// Arguments passed to the command
+    pub args: Vec<String>,
+    /// Working directory, relative to source root
+    pub path: String,
+}
+
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+pub struct JobPointer {
+    /// Unique identifier for the job
+    pub id: i64,
+    /// A human readable identifier for the job
+    pub name: String,
+    /// Git repository for the job
+    pub source: String,
+    /// Path, relative to the repository root, of the job definition
+    pub path: String,
+}
+
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+pub struct JobCreationRequest {
+    /// A human readable identifier for the job
+    pub name: String,
+    /// Git repository for the job
+    pub source: String,
+    /// Path, relative to the repository root, of the job definition
+    pub path: String,
 }
 
 #[derive(Debug)]

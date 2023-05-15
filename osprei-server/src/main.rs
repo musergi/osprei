@@ -1,9 +1,9 @@
-use std::{convert::Infallible, net::SocketAddr};
+use std::net::SocketAddr;
 
 use clap::Parser;
-use log::{error, info};
-use osprei_server::database::DatabasePersistance;
-use osprei_server::database::Persistance;
+use log::info;
+use osprei_server::persistance;
+use osprei_server::{views, PathBuilder};
 use serde::{Deserialize, Serialize};
 use warp::Filter;
 
@@ -21,40 +21,45 @@ async fn main() {
     let args = Args::parse();
     pretty_env_logger::init();
     info!("Reading configuration from {}", args.config_path);
-    let Config {
-        job_path,
-        data_path,
-        address,
-    } = Config::read(&args.config_path);
-    let path_builder = osprei_server::PathBuilder::new(job_path, data_path);
-    let persistance = DatabasePersistance::new(path_builder.database_path()).await;
-    persistance.init().await;
-    build_workspace(path_builder.workspace_dir()).await;
-    let job_list = warp::path!("job")
-        .and(with_string(path_builder.job_path().to_string()))
-        .and_then(list_jobs);
-    let job_get = warp::path!("job" / String)
-        .and(with_string(path_builder.job_path().to_string()))
-        .and_then(get_job);
-    let job_run = warp::path!("job" / String / "run")
-        .and(with_persistance(persistance.clone()))
-        .and(with_string(path_builder.job_path().to_string()))
-        .and(with_string(path_builder.workspace_dir().to_string()))
-        .and_then(job_run);
-    let execution_list = warp::path!("job" / String / "executions")
-        .and(with_persistance(persistance.clone()))
-        .and_then(job_executions);
-    let execution_get = warp::path!("execution" / i64)
-        .and(with_persistance(persistance.clone()))
-        .and_then(execution_details);
+    let Config { data_path, address } = Config::read(&args.config_path);
+    let path_builder = osprei_server::PathBuilder::new(data_path);
+    let store = persistance::memory::MemoryStore::default();
+    build_workspace(path_builder.workspaces()).await;
+    let get_jobs = warp::path!("job")
+        .and(warp::get())
+        .and(persistance::memory::with(store.clone()))
+        .and_then(views::get_jobs);
+    let get_job = warp::path!("job" / i64)
+        .and(warp::get())
+        .and(persistance::memory::with(store.clone()))
+        .and_then(views::get_job);
+    let post_job = warp::path!("job")
+        .and(warp::post())
+        .and(warp::body::json())
+        .and(persistance::memory::with(store.clone()))
+        .and_then(views::post_job);
+    let get_job_run = warp::path!("job" / i64 / "run")
+        .and(warp::get())
+        .and(with_path_builder(path_builder))
+        .and(persistance::memory::with(store.clone()))
+        .and_then(views::get_job_run);
+    let get_job_executions = warp::path!("job" / i64 / "executions")
+        .and(warp::get())
+        .and(persistance::memory::with(store.clone()))
+        .and_then(views::get_job_executions);
+    let get_execution = warp::path!("execution" / i64)
+        .and(warp::get())
+        .and(persistance::memory::with(store))
+        .and_then(views::get_execution);
     warp::serve(
         warp::any()
             .and(
-                job_list
-                    .or(job_get)
-                    .or(job_run)
-                    .or(execution_list)
-                    .or(execution_get),
+                get_jobs
+                    .or(get_job)
+                    .or(post_job)
+                    .or(get_job_run)
+                    .or(get_job_executions)
+                    .or(get_execution),
             )
             .with(warp::cors().allow_any_origin()),
     )
@@ -66,113 +71,14 @@ async fn build_workspace(workspace_dir: &str) {
     tokio::fs::create_dir_all(workspace_dir).await.unwrap();
 }
 
-fn with_string(
-    string: String,
-) -> impl Filter<Extract = (String,), Error = std::convert::Infallible> + Clone {
-    warp::any().map(move || string.clone())
-}
-
-fn with_persistance(
-    db: DatabasePersistance,
-) -> impl Filter<Extract = (DatabasePersistance,), Error = std::convert::Infallible> + Clone {
-    warp::any().map(move || db.clone())
-}
-
-async fn execution_details(
-    execution_id: i64,
-    persistance: impl osprei_server::database::Persistance,
-) -> Result<impl warp::Reply, Infallible> {
-    let execution = persistance.get_execution(execution_id).await;
-    Ok(warp::reply::json(&execution))
-}
-
-async fn job_executions(
-    job_name: String,
-    persistance: impl osprei_server::database::Persistance,
-) -> Result<impl warp::Reply, Infallible> {
-    let executions = persistance.last_executions(job_name, 10).await;
-    Ok(warp::reply::json(&executions))
-}
-
-async fn list_jobs(job_dir: String) -> Result<impl warp::Reply, Infallible> {
-    let jobs: Vec<_> = jobs(job_dir)
-        .await
-        .into_iter()
-        .map(|osprei::Job { name, .. }| name)
-        .collect();
-    Ok(warp::reply::json(&jobs))
-}
-
-async fn get_job(job_name: String, job_dir: String) -> Result<impl warp::Reply, Infallible> {
-    let job = jobs(job_dir)
-        .await
-        .into_iter()
-        .find(|job| job.name == job_name)
-        .unwrap();
-    Ok(warp::reply::json(&job))
-}
-
-async fn jobs(job_dir: String) -> Vec<osprei::Job> {
-    let mut entries = tokio::fs::read_dir(job_dir).await.unwrap();
-    let mut jobs: Vec<osprei::Job> = Vec::new();
-    while let Some(entry) = entries.next_entry().await.unwrap() {
-        let path = entry.path().to_str().unwrap().to_string();
-        let string = tokio::fs::read_to_string(path).await.unwrap();
-        let job = serde_json::from_str(&string).unwrap();
-        jobs.push(job);
-    }
-    jobs
-}
-
-async fn job_run(
-    job_name: String,
-    persistance: impl osprei_server::database::Persistance + Send + Sync + 'static,
-    job_dir: String,
-    data_dir: String,
-) -> Result<impl warp::Reply, Infallible> {
-    let job = jobs(job_dir)
-        .await
-        .into_iter()
-        .find(|job| job.name == job_name)
-        .unwrap();
-    let index = persistance.create_execution(job_name.clone()).await;
-    let mut job_runner = osprei_server::execute::JobRunner::new(&job_name, &data_dir);
-    {
-        let execution_id = index.clone();
-        tokio::spawn(async move {
-            match job_runner.execute(job).await {
-                Ok(res) => {
-                    info!("Successfull execution of {}: {:?}", job_name, res);
-                    let status = match res.iter().any(|status| status.status != 0) {
-                        true => 1,
-                        false => 0,
-                    };
-                    persistance.set_execution_status(execution_id, status).await;
-                }
-                Err(err) => {
-                    error!("An error occured while executing: {}: {}", job_name, err);
-                    persistance.set_execution_status(execution_id, 1).await;
-                }
-            }
-        });
-    }
-    Ok(warp::reply::json(&index))
-}
-
-#[derive(Debug, Serialize)]
-struct ExecutionList {
-    executions: Vec<ExecutionSummary>,
-}
-
-#[derive(Debug, Serialize)]
-struct ExecutionSummary {
-    id: i64,
-    timestamp: String,
+fn with_path_builder(
+    path_builder: PathBuilder,
+) -> impl Filter<Extract = (PathBuilder,), Error = std::convert::Infallible> + Clone {
+    warp::any().map(move || path_builder.clone())
 }
 
 #[derive(Deserialize, Serialize, Debug)]
 struct Config {
-    job_path: String,
     data_path: String,
     address: String,
 }

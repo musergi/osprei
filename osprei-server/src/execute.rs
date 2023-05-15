@@ -1,160 +1,112 @@
-use log::{info, warn};
+use log::{debug, info};
+use osprei::{Job, Stage, StageExecutionSummary};
 
-struct ExecutionPaths {
-    source_dir: String,
-    result_dir: String,
+pub struct JobExecutionOptions {
+    /// Clone directory for the source repo
+    pub execution_dir: String,
+    /// Dump directory for this execution output
+    pub result_dir: String,
+    /// Git repository to clone
+    pub source: String,
+    /// Path within the repository of the job definition
+    pub path: String,
 }
 
-impl ExecutionPaths {
-    fn new(job_name: &str, data_path: &str) -> Self {
-        let source_dir = ExecutionPaths::build_source_dir(data_path, job_name).unwrap();
-        let result_dir = ExecutionPaths::build_result_dir(data_path, job_name).unwrap();
-        Self {
-            source_dir,
-            result_dir,
-        }
+pub async fn execute_job(
+    options: JobExecutionOptions,
+) -> Result<Vec<StageExecutionSummary>, ExecutionError> {
+    let JobExecutionOptions {
+        execution_dir,
+        result_dir,
+        source,
+        path,
+    } = options;
+    if tokio::fs::remove_dir_all(&execution_dir).await.is_ok() {
+        info!("Clean up directory: {}", execution_dir);
     }
-
-    fn build_source_dir(data_path: &str, job_name: &str) -> Option<String> {
-        let mut buf = std::path::PathBuf::from(data_path);
-        buf.push(job_name);
-        buf.push("workspace");
-        buf.push(job_name);
-        let path = buf.to_str()?.to_string();
-        Some(path)
-    }
-
-    fn build_result_dir(data_path: &str, job_name: &str) -> Option<String> {
-        let current_epoch = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .expect("Clock before epoch")
-            .as_nanos();
-        let mut buf = std::path::PathBuf::from(data_path);
-        buf.push(format!("{}-{}", job_name, current_epoch));
-        let path = buf.to_str()?.to_string();
-        Some(path)
-    }
-}
-
-pub struct JobRunner {
-    source_dir: String,
-    output_writer: OutputWriter,
-}
-
-impl JobRunner {
-    pub fn new(job_name: &str, data_path: &str) -> Self {
-        let ExecutionPaths {
-            source_dir,
-            result_dir,
-        } = ExecutionPaths::new(job_name, data_path);
-        let output_writer = OutputWriter::new(result_dir);
-        Self {
-            source_dir,
-            output_writer,
-        }
-    }
-
-    pub async fn execute(
-        &mut self,
-        job: osprei::Job,
-    ) -> Result<Vec<osprei::StageExecutionSummary>, ExecutionError> {
-        self.prepare_environment().await;
-        let mut summaries = Vec::new();
-        for stage in job.stages {
-            let summary = self.execute_stage(stage).await?;
-            let is_ok = summary.status == 0;
-            summaries.push(summary);
-            if !is_ok {
-                return Ok(summaries);
-            }
-        }
-        Ok(summaries)
-    }
-
-    async fn prepare_environment(&self) {
-        tokio::fs::remove_dir_all(self.source_dir.clone())
+    let mut output_writer = OutputWriter::new(result_dir);
+    output_writer.ensure_result_dir().await?;
+    let mut outputs = Vec::new();
+    let checkout_output = tokio::process::Command::new("git")
+        .arg("clone")
+        .arg(&source)
+        .arg(&execution_dir)
+        .output()
+        .await
+        .map_err(|err| ExecutionError::SubProccess(err))?;
+    let logs = output_writer.write(&checkout_output).await?;
+    outputs.push(StageExecutionSummary {
+        status: checkout_output.status.code().unwrap_or(-1),
+        logs,
+    });
+    if checkout_output.status.success() {
+        info!("Code checkout complete for: {}", source);
+        let path = std::path::PathBuf::from(&execution_dir)
+            .join(path)
+            .to_string_lossy()
+            .to_string();
+        let job_definition = tokio::fs::read_to_string(&path)
             .await
-            .expect("Delete previous environment");
-    }
-
-    async fn execute_stage(
-        &mut self,
-        stage: osprei::Stage,
-    ) -> Result<osprei::StageExecutionSummary, ExecutionError> {
-        let summary = match stage {
-            osprei::Stage::Command { cmd, args, path } => {
-                self.execute_cmd_stage(cmd, args, path).await?
+            .map_err(|err| ExecutionError::MissingDefinition { path, err })?;
+        let job_definition: Job = serde_json::from_str(&job_definition)?;
+        debug!("Read job definition: {:?}", job_definition);
+        for stage in job_definition.stages {
+            debug!("Running stage: {:?}", stage);
+            let Stage { cmd, args, path } = stage;
+            let path = std::path::PathBuf::from(&execution_dir)
+                .join(path)
+                .to_string_lossy()
+                .to_string();
+            let stage_output = tokio::process::Command::new(cmd)
+                .args(args)
+                .current_dir(path)
+                .output()
+                .await
+                .map_err(|err| ExecutionError::SubProccess(err))?;
+            let logs = output_writer.write(&stage_output).await?;
+            outputs.push(StageExecutionSummary {
+                status: stage_output.status.code().unwrap_or(-1),
+                logs,
+            });
+            if !stage_output.status.success() {
+                break;
             }
-            osprei::Stage::Source { repository_url } => self.execute_source(repository_url).await?,
-        };
-        Ok(summary)
-    }
-
-    async fn execute_cmd_stage(
-        &mut self,
-        cmd: String,
-        args: Vec<String>,
-        path: String,
-    ) -> Result<osprei::StageExecutionSummary, ExecutionError> {
-        let mut buf = std::path::PathBuf::from(&self.source_dir);
-        buf.push(path);
-        let output = tokio::process::Command::new(cmd)
-            .args(args)
-            .current_dir(buf.as_path())
-            .output()
-            .await?;
-        let logs = self.output_writer.write(&output).await?;
-        if !output.status.success() {
-            warn!("An error occured while running command");
-            warn!("stdout: {}", logs.stdout_path);
-            warn!("stderr: {}", logs.stderr_path);
         }
-        let status = output.status.code().unwrap();
-        Ok(osprei::StageExecutionSummary { status, logs })
     }
-
-    async fn execute_source(
-        &mut self,
-        repo_url: String,
-    ) -> Result<osprei::StageExecutionSummary, ExecutionError> {
-        let output = tokio::process::Command::new("git")
-            .args(vec!["clone", &repo_url, &self.source_dir])
-            .output()
-            .await?;
-        let logs = self.output_writer.write(&output).await?;
-        if !output.status.success() {
-            warn!("An error occured while checking out code");
-            warn!("stdout: {}", logs.stdout_path);
-            warn!("stderr: {}", logs.stderr_path);
-        }
-        let status = output.status.code().unwrap();
-        Ok(osprei::StageExecutionSummary { status, logs })
-    }
+    Ok(outputs)
 }
 
 #[derive(Debug)]
 pub enum ExecutionError {
-    CommandSpawnError(std::io::Error),
-    OutputDumpError(OutputWriteError),
+    SubProccess(std::io::Error),
+    OutputWriteError(OutputWriteError),
+    MissingDefinition { path: String, err: std::io::Error },
+    DefinitionSyntaxError(serde_json::Error),
 }
 
 impl From<OutputWriteError> for ExecutionError {
     fn from(value: OutputWriteError) -> Self {
-        Self::OutputDumpError(value)
+        Self::OutputWriteError(value)
     }
 }
 
-impl From<std::io::Error> for ExecutionError {
-    fn from(value: std::io::Error) -> Self {
-        Self::CommandSpawnError(value)
+impl From<serde_json::Error> for ExecutionError {
+    fn from(value: serde_json::Error) -> Self {
+        Self::DefinitionSyntaxError(value)
     }
 }
 
 impl std::fmt::Display for ExecutionError {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
-            Self::CommandSpawnError(err) => write!(f, "failed to spawn process: {}", err),
-            Self::OutputDumpError(err) => write!(f, "{}", err),
+            ExecutionError::SubProccess(err) => write!(f, "error starting process: {}", err),
+            ExecutionError::OutputWriteError(err) => write!(f, "error writing output: {}", err),
+            ExecutionError::MissingDefinition { path, err } => {
+                write!(f, "error reading definition: {}: {}", err, path)
+            }
+            ExecutionError::DefinitionSyntaxError(err) => {
+                write!(f, "definition syntax error: {}", err)
+            }
         }
     }
 }
