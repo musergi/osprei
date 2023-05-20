@@ -5,7 +5,7 @@ use osprei::{JobCreationRequest, JobPointer};
 
 use crate::{
     execute,
-    persistance::{ExecutionStore, JobStore},
+    persistance::{ExecutionStore, JobStore, ScheduleStore},
     PathBuilder,
 };
 
@@ -53,12 +53,7 @@ pub async fn get_job_run(
         tokio::spawn(async move {
             match execute::execute_job(options).await {
                 Ok(outputs) => {
-                    let any_failed = outputs.iter().any(|output| output.status != 0);
-                    let status = match any_failed {
-                        false => 0,
-                        true => 1,
-                    };
-                    store.set_execution_status(execution_id, status).await;
+                    execute::write_result(execution_id, &outputs, &store).await;
                 }
                 Err(err) => error!("An error occurred during job executions: {}", err),
             }
@@ -81,4 +76,25 @@ pub async fn get_execution(
 ) -> Result<impl warp::Reply, Infallible> {
     let execution = store.get_execution(execution_id).await;
     Ok(warp::reply::json(&execution))
+}
+
+pub async fn get_job_schedule(
+    job_id: i64,
+    store: impl ScheduleStore,
+) -> Result<impl warp::Reply, Infallible> {
+    let schedules = store.get_schedules(job_id).await;
+    Ok(warp::reply::json(&schedules))
+}
+
+pub async fn post_job_schedule(
+    job_id: i64,
+    request: osprei::ScheduleRequest,
+    path_builder: PathBuilder,
+    store: impl ScheduleStore + JobStore + ExecutionStore + Send + Sync + 'static,
+) -> Result<impl warp::Reply, Infallible> {
+    let id = store.create_daily(job_id, request.clone()).await;
+    let job = store.fetch_job(job_id).await;
+    let osprei::ScheduleRequest { hour, minute } = request;
+    execute::schedule_job(job, hour, minute, path_builder, store).await;
+    Ok(warp::reply::json(&id))
 }

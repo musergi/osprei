@@ -25,13 +25,13 @@ impl PathBuilder {
         &self.workspace_dir
     }
 
-    fn workspace(&self, job_name: &str) -> String {
+    pub fn workspace(&self, job_name: &str) -> String {
         let mut buf = std::path::PathBuf::from(&self.workspace_dir);
         buf.push(job_name);
         buf.to_string_lossy().to_string()
     }
 
-    fn results(&self, job_name: &str, execution_id: i64) -> String {
+    pub fn results(&self, job_name: &str, execution_id: i64) -> String {
         let mut buf = std::path::PathBuf::from(&self.result_dir);
         buf.push(job_name);
         buf.push(execution_id.to_string());

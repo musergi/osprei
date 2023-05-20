@@ -1,4 +1,5 @@
-use log::{debug, info};
+use chrono::DurationRound;
+use log::{debug, error, info};
 use osprei::{Job, Stage, StageExecutionSummary};
 
 pub struct JobExecutionOptions {
@@ -74,6 +75,68 @@ pub async fn execute_job(
         }
     }
     Ok(outputs)
+}
+
+pub async fn write_result(
+    execution_id: i64,
+    stage_summaries: &Vec<StageExecutionSummary>,
+    store: &impl crate::persistance::ExecutionStore,
+) {
+    let any_failed = stage_summaries.iter().any(|output| output.status != 0);
+    let status = match any_failed {
+        false => 0,
+        true => 1,
+    };
+    store.set_execution_status(execution_id, status).await;
+}
+
+pub async fn schedule_job(
+    job: osprei::JobPointer,
+    hour: u8,
+    minute: u8,
+    path_builder: crate::PathBuilder,
+    store: impl crate::persistance::ExecutionStore + Send + Sync + 'static,
+) {
+    let osprei::JobPointer {
+        id,
+        name,
+        source,
+        path,
+    } = job;
+
+    tokio::spawn(async move {
+        let mut interval = create_intervel(hour, minute);
+        loop {
+            interval.tick().await;
+            let execution_id = store.create_execution(id).await;
+            let options = JobExecutionOptions {
+                execution_dir: path_builder.workspace(&name),
+                result_dir: path_builder.results(&name, execution_id),
+                source: source.clone(),
+                path: path.clone(),
+            };
+            match execute_job(options).await {
+                Ok(outputs) => {
+                    write_result(execution_id, &outputs, &store).await;
+                }
+                Err(err) => error!("An error occurred during job executions: {}", err),
+            }
+        }
+    });
+}
+
+fn create_intervel(hour: u8, minute: u8) -> tokio::time::Interval {
+    let now = chrono::Utc::now();
+    let start = now
+        .duration_trunc(chrono::Duration::days(1))
+        .unwrap()
+        .checked_add_signed(chrono::Duration::minutes(hour as i64 * 60 + minute as i64))
+        .unwrap()
+        .signed_duration_since(now);
+    tokio::time::interval_at(
+        tokio::time::Instant::now() + start.to_std().unwrap(),
+        std::time::Duration::from_secs(24 * 60 * 60),
+    )
 }
 
 #[derive(Debug)]

@@ -60,3 +60,23 @@ pub struct ExecutionDetails {
     pub start_time: String,
     pub status: Option<i64>,
 }
+
+#[derive(Debug, Clone, PartialEq, serde::Deserialize, serde::Serialize)]
+pub struct Schedule {
+    /// Unique identifier for the schedule
+    pub schedule_id: i64,
+    /// Job the schedule runs
+    pub job_id: i64,
+    /// Hour of day the job runs
+    pub hour: u8,
+    /// Minute of day the job runs
+    pub minute: u8,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Deserialize, serde::Serialize)]
+pub struct ScheduleRequest {
+    /// Hour of day the job runs
+    pub hour: u8,
+    /// Minute of day the job runs
+    pub minute: u8,
+}

@@ -2,7 +2,8 @@ use std::net::SocketAddr;
 
 use clap::Parser;
 use log::info;
-use osprei_server::persistance;
+use osprei_server::persistance::{JobStore, ScheduleStore};
+use osprei_server::{execute, persistance};
 use osprei_server::{views, PathBuilder};
 use serde::{Deserialize, Serialize};
 use warp::Filter;
@@ -25,6 +26,16 @@ async fn main() {
     let path_builder = osprei_server::PathBuilder::new(data_path);
     let store = persistance::memory::MemoryStore::default();
     build_workspace(path_builder.workspaces()).await;
+    for schedule in store.get_all_schedules().await {
+        let osprei::Schedule {
+            job_id,
+            hour,
+            minute,
+            ..
+        } = schedule;
+        let job = store.fetch_job(job_id).await;
+        execute::schedule_job(job, hour, minute, path_builder.clone(), store.clone()).await;
+    }
     let get_jobs = warp::path!("job")
         .and(warp::get())
         .and(persistance::memory::with(store.clone()))
@@ -40,7 +51,7 @@ async fn main() {
         .and_then(views::post_job);
     let get_job_run = warp::path!("job" / i64 / "run")
         .and(warp::get())
-        .and(with_path_builder(path_builder))
+        .and(with_path_builder(path_builder.clone()))
         .and(persistance::memory::with(store.clone()))
         .and_then(views::get_job_run);
     let get_job_executions = warp::path!("job" / i64 / "executions")
@@ -49,8 +60,18 @@ async fn main() {
         .and_then(views::get_job_executions);
     let get_execution = warp::path!("execution" / i64)
         .and(warp::get())
-        .and(persistance::memory::with(store))
+        .and(persistance::memory::with(store.clone()))
         .and_then(views::get_execution);
+    let get_job_schedule = warp::path!("job" / i64 / "schedule")
+        .and(warp::get())
+        .and(persistance::memory::with(store.clone()))
+        .and_then(views::get_job_schedule);
+    let post_job_schedule = warp::path!("job" / i64 / "schedule")
+        .and(warp::post())
+        .and(warp::body::json())
+        .and(with_path_builder(path_builder))
+        .and(persistance::memory::with(store))
+        .and_then(views::post_job_schedule);
     warp::serve(
         warp::any()
             .and(
@@ -59,7 +80,9 @@ async fn main() {
                     .or(post_job)
                     .or(get_job_run)
                     .or(get_job_executions)
-                    .or(get_execution),
+                    .or(get_execution)
+                    .or(get_job_schedule)
+                    .or(post_job_schedule),
             )
             .with(warp::cors().allow_any_origin()),
     )

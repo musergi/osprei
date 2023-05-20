@@ -15,6 +15,13 @@ pub trait ExecutionStore {
 }
 
 #[async_trait::async_trait]
+pub trait ScheduleStore {
+    async fn create_daily(&self, job_id: i64, request: osprei::ScheduleRequest) -> i64;
+    async fn get_schedules(&self, job_id: i64) -> Vec<osprei::Schedule>;
+    async fn get_all_schedules(&self) -> Vec<osprei::Schedule>;
+}
+
+#[async_trait::async_trait]
 pub trait Persistance {
     async fn init(&self);
     async fn create_execution(&self, job_name: String) -> i64;

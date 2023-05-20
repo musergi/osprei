@@ -1,11 +1,11 @@
 use std::{collections::BTreeMap, sync::Arc};
 
 use chrono::{DateTime, NaiveDateTime, Utc};
-use osprei::{ExecutionDetails, ExecutionSummary, Job, JobPointer};
+use osprei::{ExecutionDetails, ExecutionSummary, Job, JobPointer, Schedule, ScheduleRequest};
 use tokio::sync::Mutex;
 use warp::Filter;
 
-use super::{ExecutionStore, JobStore};
+use super::{ExecutionStore, JobStore, ScheduleStore};
 
 pub fn with(
     store: MemoryStore,
@@ -24,6 +24,8 @@ struct MemoryStorage {
     jobs: BTreeMap<i64, JobPointer>,
     execution_counter: i64,
     executions: BTreeMap<i64, Execution>,
+    schedule_couter: i64,
+    schedules: BTreeMap<i64, Schedule>,
 }
 
 struct Execution {
@@ -124,6 +126,40 @@ impl ExecutionStore for MemoryStore {
                 start_time: timestamp_str(execution.start_time),
             })
             .collect()
+    }
+}
+
+#[async_trait::async_trait]
+impl ScheduleStore for MemoryStore {
+    async fn create_daily(&self, job_id: i64, request: ScheduleRequest) -> i64 {
+        let mut data = self.data.lock().await;
+        let id = data.schedule_couter;
+        data.schedule_couter += 1;
+        let ScheduleRequest { hour, minute } = request;
+        data.schedules.insert(
+            id,
+            Schedule {
+                schedule_id: id,
+                job_id,
+                hour,
+                minute,
+            },
+        );
+        id
+    }
+
+    async fn get_schedules(&self, job_id: i64) -> Vec<osprei::Schedule> {
+        let data = self.data.lock().await;
+        data.schedules
+            .values()
+            .filter(|s| s.job_id == job_id)
+            .cloned()
+            .collect()
+    }
+
+    async fn get_all_schedules(&self) -> Vec<osprei::Schedule> {
+        let data = self.data.lock().await;
+        data.schedules.values().cloned().collect()
     }
 }
 
