@@ -5,12 +5,9 @@ edition = "2021"
 
 [dependencies]
 osprei = { path = "../osprei" }
-yew = { version = "0.20.0", features = ["csr"] }
-web-sys = "0.3.61"
 
-gloo-net = "0.2"
+leptos = "0.3.0"
 serde = { version = "1.0.160", features = ["derive"] }
-wasm-bindgen-futures = "0.4"
-
 log = "0.4"
 wasm-logger = "0.2"
+reqwasm = "0.5"
