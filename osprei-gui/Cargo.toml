@@ -11,3 +11,5 @@ serde = { version = "1.0.160", features = ["derive"] }
 log = "0.4"
 wasm-logger = "0.2"
 reqwasm = "0.5"
+
+serde_json = "*"

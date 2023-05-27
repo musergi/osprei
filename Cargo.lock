@@ -1456,6 +1456,7 @@ dependencies = [
  "osprei",
  "reqwasm",
  "serde",
+ "serde_json",
  "wasm-logger",
 ]
 
