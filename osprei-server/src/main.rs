@@ -84,7 +84,12 @@ async fn main() {
                     .or(get_job_schedule)
                     .or(post_job_schedule),
             )
-            .with(warp::cors().allow_any_origin()),
+            .with(
+                warp::cors()
+                    .allow_any_origin()
+                    .allow_headers(vec!["User-Agent", "Sec-Fetch-Mode", "Referer", "Origin", "Access-Control-Request-Method", "Access-Control-Request-Headers", "Content-Type"])
+                    .allow_methods(vec!["GET", "POST"]),
+            ),
     )
     .run(address.parse::<SocketAddr>().unwrap())
     .await;

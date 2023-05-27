@@ -49,7 +49,7 @@ pub fn osprei_gui(cx: Scope) -> impl IntoView {
             .unwrap_or_default()
             .into_iter()
             .map(
-                |osprei::JobPointer { name, .. }: osprei::JobPointer| view! {cx, <li>{ name }</li>},
+                |osprei::JobPointer { name, .. }: osprei::JobPointer| view! {cx, <li>{ name } <button>{ "Run" }</button></li>},
             )
             .collect_view(cx)
     };
