@@ -20,6 +20,7 @@ pub fn osprei_gui(cx: Scope) -> impl IntoView {
 
                 set_is_adding.set(false);
                 info!("Submitted {}, {}, {}", name, source, path);
+                jobs.refetch();
             };
 
             view! { cx,
@@ -40,10 +41,15 @@ pub fn osprei_gui(cx: Scope) -> impl IntoView {
         },
     };
 
+    let jobs = move || {
+        jobs.read(cx).unwrap_or_default().into_iter().map(|osprei::JobPointer{name, ..}: osprei::JobPointer| view! {cx, <li>{ name }</li>}).collect_view(cx)
+    };
+
     view! { cx,
         <ul>
             <li>"Job 1"</li>
             <li>"Job 2"</li>
+            { jobs }
             { last }
         </ul>
     }
@@ -51,24 +57,35 @@ pub fn osprei_gui(cx: Scope) -> impl IntoView {
 
 async fn load_jobs(_: ()) -> Vec<osprei::JobPointer> {
     let url = "http://localhost:10000/job";
-    let job_ids: Vec<i64> = reqwasm::http::Request::get(url)
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let mut jobs = Vec::new();
+    let job_ids: Vec<i64> = request(url).await.unwrap_or_default();
+    let mut jobs: Vec<osprei::JobPointer> = Vec::new();
     for job_id in job_ids {
         let url = format!("http://localhost:10000/job/{}", job_id);
-        let job = reqwasm::http::Request::get(&url)
-            .send()
-            .await
-            .unwrap()
-            .json()
-            .await
-            .unwrap();
+        let job = request(&url).await.unwrap();
         jobs.push(job);
     }
+    for job in jobs.iter() {
+        info!("Found job: {}", job.name);
+    }
+    info!("Loaded all jobs");
     jobs
+}
+
+async fn request<T: serde::de::DeserializeOwned>(url: &str) -> Option<T> {
+    match reqwasm::http::Request::get(&url)
+            .send()
+            .await
+{
+    Ok(data) => match data.json().await {
+        Ok(deserialized) => Some(deserialized),
+        Err(err) => {
+            error!("Failed to deserialize response: {}", err);
+            None
+        }
+    },
+    Err(err) => {
+        error!("Request to server failed: {}: {}", url, err);
+        None
+    }
+}
 }
