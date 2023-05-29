@@ -1,11 +1,70 @@
-use leptos::{ev::SubmitEvent, html::Input, Resource, *};
+use leptos::{ev::SubmitEvent, html::Input, *};
 use log::info;
+use std::collections::VecDeque;
+
+#[derive(Debug, Clone, PartialEq)]
+enum Action {
+    Run(i64),
+    Add(osprei::JobCreationRequest),
+}
+
+#[derive(Debug, Default, Clone, PartialEq)]
+struct ActionQueue {
+    actions: VecDeque<(i64, Action)>,
+}
+
+impl ActionQueue {
+    fn first(&self) -> Option<i64> {
+        self.actions.front().map(|v| v.0)
+    }
+
+    fn fetch(self, id: i64) -> Option<Action> {
+        self.actions.into_iter().find_map(
+            |(action_id, action)| {
+                if action_id == id {
+                    Some(action)
+                } else {
+                    None
+                }
+            },
+        )
+    }
+
+    fn remove(&mut self, id: i64) {
+        let position = self
+            .actions
+            .iter()
+            .position(|(action_id, _)| *action_id == id)
+            .unwrap();
+        self.actions.remove(position);
+    }
+
+    fn add(&mut self, action: Action) {
+        let id = self
+            .actions
+            .iter()
+            .map(|(idx, _)| idx)
+            .max()
+            .cloned()
+            .unwrap_or_default()
+            + 1;
+        self.actions.push_back((id, action));
+    }
+}
 
 pub fn osprei_gui(cx: Scope) -> impl IntoView {
     let (is_adding, set_is_adding) = create_signal(cx, false);
     let jobs = create_resource(cx, || (), load_jobs);
-    let (req, set_req) = create_signal(cx, None);
-    let job_creator = create_resource(cx, req, move |req| create_job(req, jobs, set_req));
+    let (action_queue, set_action_queue) = create_signal(cx, ActionQueue::default());
+    let notifications = create_resource(
+        cx,
+        move || action_queue.get().first(),
+        move |id| {
+            fetch_notifications(id, action_queue, set_action_queue, move || {
+                jobs.refetch();
+            })
+        },
+    );
 
     let last = move || match is_adding() {
         true => {
@@ -22,8 +81,10 @@ pub fn osprei_gui(cx: Scope) -> impl IntoView {
 
                 set_is_adding.set(false);
                 info!("Submitting {}, {}, {}", name, source, path);
-                let req = osprei::JobCreationRequest { name, source, path };
-                set_req.set(Some(req));
+                let req = Action::Add(osprei::JobCreationRequest { name, source, path });
+                set_action_queue.update(move |queue| {
+                    queue.add(req);
+                });
             };
 
             view! { cx,
@@ -48,62 +109,26 @@ pub fn osprei_gui(cx: Scope) -> impl IntoView {
         jobs.read(cx)
             .unwrap_or_default()
             .into_iter()
-            .map(
-                |osprei::JobPointer { name, .. }: osprei::JobPointer| view! {cx, <li>{ name } <button>{ "Run" }</button></li>},
-            )
+            .map(|job_id| view! { cx, <Job id={job_id} /> })
             .collect_view(cx)
     };
 
     view! { cx,
-        <ul>
-            <li>"Job 1"</li>
-            <li>"Job 2"</li>
-            { jobs }
-            { last }
-        </ul>
+        <>
+            <ul>
+                { jobs }
+                { last }
+            </ul>
+            <p>
+                { move || notifications.read(cx).and_then(|c| c) }
+            </p>
+        </>
     }
 }
 
-async fn load_jobs(_: ()) -> Vec<osprei::JobPointer> {
+async fn load_jobs(_: ()) -> Vec<i64> {
     let url = "http://localhost:10000/job";
-    let job_ids: Vec<i64> = request(url).await.unwrap_or_default();
-    let mut jobs: Vec<osprei::JobPointer> = Vec::new();
-    for job_id in job_ids {
-        let url = format!("http://localhost:10000/job/{}", job_id);
-        let job = request(&url).await.unwrap();
-        jobs.push(job);
-    }
-    for job in jobs.iter() {
-        info!("Found job: {}", job.name);
-    }
-    info!("Loaded all jobs");
-    jobs
-}
-
-async fn create_job(
-    req: Option<osprei::JobCreationRequest>,
-    jobs: Resource<(), Vec<osprei::JobPointer>>,
-    set_req: WriteSignal<Option<osprei::JobCreationRequest>>,
-) -> Result<(), String> {
-    match req {
-        Some(job_req) => {
-            set_req.set(None);
-            let url = "http://localhost:10000/job";
-            let job_id: i64 = reqwasm::http::Request::post(url)
-                .header("Content-Type", "application/json")
-                .body(serde_json::to_string(&job_req).unwrap())
-                .send()
-                .await
-                .map_err(|err| format!("Request error: {}", err))?
-                .json()
-                .await
-                .map_err(|err| format!("Deserialization error: {}", err))?;
-            info!("Created job with id: {}", job_id);
-            jobs.refetch();
-            Ok(())
-        }
-        None => Ok(()),
-    }
+    request(url).await.unwrap_or_default()
 }
 
 async fn request<T: serde::de::DeserializeOwned>(url: &str) -> Option<T> {
@@ -117,6 +142,68 @@ async fn request<T: serde::de::DeserializeOwned>(url: &str) -> Option<T> {
         },
         Err(err) => {
             error!("Request to server failed: {}: {}", url, err);
+            None
+        }
+    }
+}
+
+#[component]
+fn job(cx: Scope, id: i64) -> impl IntoView {
+    let job = create_resource(cx, move || id, job_fetcher);
+
+    move || match job.read(cx) {
+        Some(Ok(osprei::JobPointer {
+            name, source, path, ..
+        })) => view! { cx,
+            <div>
+                <h3>{ name }</h3>
+                <p>{ format!("{} with {}", source, path) }</p>
+                <button>"Run"</button>
+            </div>
+        },
+        _ => view! { cx,
+            <div>
+                <p>"Loading..."</p>
+            </div>
+        },
+    }
+}
+
+async fn job_fetcher(job_id: i64) -> Result<osprei::JobPointer, String> {
+    let url = format!("http://localhost:10000/job/{}", job_id);
+    let job_pointer = reqwasm::http::Request::get(&url)
+        .send()
+        .await
+        .map_err(|err| format!("Could not load job({}): {}", job_id, err))?
+        .json()
+        .await
+        .map_err(|err| format!("Could not deserialize job({}): {}", job_id, err))?;
+    Ok(job_pointer)
+}
+
+async fn fetch_notifications(
+    id: Option<i64>,
+    read: ReadSignal<ActionQueue>,
+    write: WriteSignal<ActionQueue>,
+    refresh: impl Fn(),
+) -> Option<String> {
+    match id {
+        Some(id) => {
+            info!("Running action with id: {}", id);
+            match read.get().fetch(id) {
+                Some(action) => {
+                    info!("Found action: {:?}", action);
+                    write.update(|w| {
+                        w.remove(id);
+                    });
+                    refresh();
+                    None
+                }
+                None => Some(format!("Action not found: {}", id)),
+            }
+        }
+        None => {
+            info!("Action queue empty, nothing to do...");
             None
         }
     }
