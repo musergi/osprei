@@ -2,7 +2,6 @@
 
 members = [
     "osprei-server",
-    "osprei-gui",
     "osprei",
     "osprei-cli",
 ]
