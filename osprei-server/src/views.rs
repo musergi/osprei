@@ -3,20 +3,16 @@ use std::convert::Infallible;
 use log::error;
 use osprei::{JobCreationRequest, JobPointer};
 
-use crate::{
-    execute,
-    persistance::{ExecutionStore, JobStore, ScheduleStore},
-    PathBuilder,
-};
+use crate::{execute, persistance::Store, PathBuilder};
 
-pub async fn get_jobs(job_store: impl JobStore) -> Result<impl warp::Reply, Infallible> {
+pub async fn get_jobs(job_store: Box<dyn Store>) -> Result<impl warp::Reply, Infallible> {
     let jobs = job_store.list_jobs().await;
     Ok(warp::reply::json(&jobs))
 }
 
 pub async fn get_job(
     job_id: i64,
-    job_store: impl JobStore,
+    job_store: Box<dyn Store>,
 ) -> Result<impl warp::Reply, Infallible> {
     let job_ptr = job_store.fetch_job(job_id).await;
     Ok(warp::reply::json(&job_ptr))
@@ -24,7 +20,7 @@ pub async fn get_job(
 
 pub async fn post_job(
     request: JobCreationRequest,
-    job_store: impl JobStore,
+    job_store: Box<dyn Store>,
 ) -> Result<impl warp::Reply, Infallible> {
     let JobCreationRequest { name, source, path } = request;
     let job_id = job_store.store_job(name, source, path).await;
@@ -34,7 +30,7 @@ pub async fn post_job(
 pub async fn get_job_run(
     job_id: i64,
     path_builder: PathBuilder,
-    store: impl JobStore + ExecutionStore + std::marker::Send + std::marker::Sync + 'static,
+    store: Box<dyn Store>,
 ) -> Result<impl warp::Reply, Infallible> {
     let JobPointer {
         name, source, path, ..
@@ -49,11 +45,11 @@ pub async fn get_job_run(
         path,
     };
     {
-        let execution_id = execution_id.clone();
+        let execution_id = execution_id;
         tokio::spawn(async move {
             match execute::execute_job(options).await {
                 Ok(outputs) => {
-                    execute::write_result(execution_id, &outputs, &store).await;
+                    execute::write_result(execution_id, &outputs, store.as_ref()).await;
                 }
                 Err(err) => error!("An error occurred during job executions: {}", err),
             }
@@ -64,7 +60,7 @@ pub async fn get_job_run(
 
 pub async fn get_job_executions(
     job_id: i64,
-    store: impl JobStore + ExecutionStore,
+    store: Box<dyn Store>,
 ) -> Result<impl warp::Reply, Infallible> {
     let executions = store.last_executions(job_id, 10).await;
     Ok(warp::reply::json(&executions))
@@ -72,7 +68,7 @@ pub async fn get_job_executions(
 
 pub async fn get_execution(
     execution_id: i64,
-    store: impl JobStore + ExecutionStore,
+    store: Box<dyn Store>,
 ) -> Result<impl warp::Reply, Infallible> {
     let execution = store.get_execution(execution_id).await;
     Ok(warp::reply::json(&execution))
@@ -80,7 +76,7 @@ pub async fn get_execution(
 
 pub async fn get_job_schedule(
     job_id: i64,
-    store: impl ScheduleStore,
+    store: Box<dyn Store>,
 ) -> Result<impl warp::Reply, Infallible> {
     let schedules = store.get_schedules(job_id).await;
     Ok(warp::reply::json(&schedules))
@@ -90,7 +86,7 @@ pub async fn post_job_schedule(
     job_id: i64,
     request: osprei::ScheduleRequest,
     path_builder: PathBuilder,
-    store: impl ScheduleStore + JobStore + ExecutionStore + Send + Sync + 'static,
+    store: Box<dyn Store>,
 ) -> Result<impl warp::Reply, Infallible> {
     let id = store.create_daily(job_id, request.clone()).await;
     let job = store.fetch_job(job_id).await;

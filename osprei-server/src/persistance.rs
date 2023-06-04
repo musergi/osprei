@@ -1,3 +1,5 @@
+use warp::Filter;
+
 #[async_trait::async_trait]
 pub trait JobStore {
     async fn list_jobs(&self) -> Vec<i64>;
@@ -21,17 +23,49 @@ pub trait ScheduleStore {
     async fn get_all_schedules(&self) -> Vec<osprei::Schedule>;
 }
 
-#[async_trait::async_trait]
-pub trait Persistance {
-    async fn init(&self);
-    async fn create_execution(&self, job_name: String) -> i64;
-    async fn set_execution_status(&self, execution_id: i64, execution_status: i64);
-    async fn get_execution(&self, execution_id: i64) -> osprei::ExecutionDetails;
-    async fn last_executions(&self, job_name: String, limit: i64) -> Vec<osprei::ExecutionSummary>;
+pub trait Store: JobStore + ExecutionStore + ScheduleStore + Send + Sync + 'static {}
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[serde(tag = "type")]
+pub enum PersistanceConfig {
+    Memory,
+    Sqlite { path: String },
+}
+
+pub async fn build(config: PersistanceConfig) -> Persistances {
+    match config {
+        PersistanceConfig::Memory => Persistances::Memory(memory::MemoryStore::default()),
+        PersistanceConfig::Sqlite { path } => {
+            Persistances::Sqlite(sqlite::DatabasePersistance::new(&path).await)
+        }
+    }
+}
+
+#[derive(Clone)]
+pub enum Persistances {
+    Memory(memory::MemoryStore),
+    Sqlite(sqlite::DatabasePersistance),
+}
+
+impl Persistances {
+    pub fn boxed(&self) -> Box<dyn Store> {
+        match self {
+            Persistances::Memory(p) => Box::new(p.clone()),
+            Persistances::Sqlite(p) => Box::new(p.clone()),
+        }
+    }
+}
+
+pub fn with(
+    persistances: Persistances,
+) -> impl Filter<Extract = (Box<dyn Store>,), Error = std::convert::Infallible> + Clone {
+    warp::any().map(move || persistances.clone().boxed())
 }
 
 #[cfg(test)]
 mod tests {
+    use osprei::ScheduleRequest;
+
     pub async fn test_job_store<T: super::JobStore>(store: T) {
         let job_ids = store.list_jobs().await;
         let initial_job_count = job_ids.len();
@@ -68,7 +102,33 @@ mod tests {
         let execution = store.get_execution(execution_id).await;
         assert_eq!(execution.status, Some(0));
     }
+
+    pub async fn test_schedule_store<T: super::ScheduleStore + super::JobStore>(store: T) {
+        let name = String::from("test_job_name");
+        let source = String::from("https://github.com/musergi/osprei.git");
+        let path = String::from(".ci/test.json");
+        let job_id = store.store_job(name.clone(), source, path).await;
+
+        let schedule_id = store
+            .create_daily(
+                job_id,
+                ScheduleRequest {
+                    hour: 12,
+                    minute: 0,
+                },
+            )
+            .await;
+        let schedules = store.get_schedules(job_id).await;
+        assert_eq!(schedules.len(), 1);
+        let schedule = schedules.get(0).unwrap();
+        assert_eq!(schedule.schedule_id, schedule_id);
+        assert_eq!(schedule.job_id, job_id);
+        assert_eq!(schedule.hour, 12);
+        assert_eq!(schedule.minute, 0);
+
+        assert_eq!(store.get_all_schedules().await.len(), 1);
+    }
 }
 
-pub mod memory;
-pub mod sqlite;
+mod memory;
+mod sqlite;

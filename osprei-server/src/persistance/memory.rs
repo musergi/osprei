@@ -3,15 +3,8 @@ use std::{collections::BTreeMap, sync::Arc};
 use chrono::{DateTime, NaiveDateTime, Utc};
 use osprei::{ExecutionDetails, ExecutionSummary, Job, JobPointer, Schedule, ScheduleRequest};
 use tokio::sync::Mutex;
-use warp::Filter;
 
-use super::{ExecutionStore, JobStore, ScheduleStore};
-
-pub fn with(
-    store: MemoryStore,
-) -> impl Filter<Extract = (MemoryStore,), Error = std::convert::Infallible> + Clone {
-    warp::any().map(move || store.clone())
-}
+use super::{ExecutionStore, JobStore, ScheduleStore, Store};
 
 #[derive(Default, Clone)]
 pub struct MemoryStore {
@@ -171,10 +164,12 @@ fn timestamp_str(secs_since_epoch: u64) -> String {
     datetime.format("%Y-%m-%d %H:%M:%S").to_string()
 }
 
+impl Store for MemoryStore {}
+
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::persistance::tests::{test_execution_store, test_job_store};
+    use crate::persistance::tests::{test_execution_store, test_job_store, test_schedule_store};
 
     #[tokio::test]
     async fn test_memory_job_store() {
@@ -186,5 +181,11 @@ mod test {
     async fn test_memory_execution_store() {
         let store = MemoryStore::default();
         test_execution_store(store).await;
+    }
+
+    #[tokio::test]
+    async fn test_memory_schedule_store() {
+        let store = MemoryStore::default();
+        test_schedule_store(store).await;
     }
 }

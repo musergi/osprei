@@ -34,7 +34,7 @@ pub async fn execute_job(
         .arg(&execution_dir)
         .output()
         .await
-        .map_err(|err| ExecutionError::SubProccess(err))?;
+        .map_err(ExecutionError::SubProccess)?;
     let logs = output_writer.write(&checkout_output).await?;
     outputs.push(StageExecutionSummary {
         status: checkout_output.status.code().unwrap_or(-1),
@@ -63,7 +63,7 @@ pub async fn execute_job(
                 .current_dir(path)
                 .output()
                 .await
-                .map_err(|err| ExecutionError::SubProccess(err))?;
+                .map_err(ExecutionError::SubProccess)?;
             let logs = output_writer.write(&stage_output).await?;
             outputs.push(StageExecutionSummary {
                 status: stage_output.status.code().unwrap_or(-1),
@@ -79,8 +79,8 @@ pub async fn execute_job(
 
 pub async fn write_result(
     execution_id: i64,
-    stage_summaries: &Vec<StageExecutionSummary>,
-    store: &impl crate::persistance::ExecutionStore,
+    stage_summaries: &[StageExecutionSummary],
+    store: &dyn crate::persistance::Store,
 ) {
     let any_failed = stage_summaries.iter().any(|output| output.status != 0);
     let status = match any_failed {
@@ -95,7 +95,7 @@ pub async fn schedule_job(
     hour: u8,
     minute: u8,
     path_builder: crate::PathBuilder,
-    store: impl crate::persistance::ExecutionStore + Send + Sync + 'static,
+    store: Box<dyn crate::persistance::Store>,
 ) {
     let osprei::JobPointer {
         id,
@@ -117,7 +117,7 @@ pub async fn schedule_job(
             };
             match execute_job(options).await {
                 Ok(outputs) => {
-                    write_result(execution_id, &outputs, &store).await;
+                    write_result(execution_id, &outputs, store.as_ref()).await;
                 }
                 Err(err) => error!("An error occurred during job executions: {}", err),
             }
