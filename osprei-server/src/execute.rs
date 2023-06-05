@@ -58,12 +58,18 @@ pub async fn execute_job(
                 .join(path)
                 .to_string_lossy()
                 .to_string();
-            let stage_output = tokio::process::Command::new(cmd)
-                .args(args)
-                .current_dir(path)
+            let stage_output = tokio::process::Command::new(&cmd)
+                .args(&args)
+                .current_dir(&path)
                 .output()
                 .await
-                .map_err(ExecutionError::SubProccess)?;
+                .map_err(|err| {
+                    error!("Error occured when spawning suprocess, dumping details.");
+                    error!("Command: {}", cmd);
+                    error!("Arguments: {:?}", args);
+                    error!("Path: {}", path);
+                    ExecutionError::SubProccess(err)
+                })?;
             let logs = output_writer.write(&stage_output).await?;
             outputs.push(StageExecutionSummary {
                 status: stage_output.status.code().unwrap_or(-1),
