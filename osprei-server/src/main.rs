@@ -1,7 +1,7 @@
 use std::net::SocketAddr;
 
 use clap::Parser;
-use log::info;
+use log::{debug, info};
 use osprei_server::persistance::PersistanceConfig;
 use osprei_server::{execute, persistance};
 use osprei_server::{views, PathBuilder};
@@ -38,6 +38,7 @@ async fn main() {
             ..
         } = schedule;
         let job = persistance.boxed().fetch_job(job_id).await;
+        debug!("Scheduling {} for {}h{}", job.name, hour, minute);
         execute::schedule_job(job, hour, minute, path_builder.clone(), persistance.boxed()).await;
     }
     let get_jobs = warp::path!("job")

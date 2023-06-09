@@ -36,22 +36,20 @@ pub async fn execute_job(
     output_builder.add(&output).await?;
     if output_builder.last_stage_successful() {
         info!("Code checkout complete for: {}", source);
-        let path = std::path::PathBuf::from(&execution_dir)
-            .join(path)
-            .to_string_lossy()
-            .to_string();
-        let job_definition = tokio::fs::read_to_string(&path)
-            .await
-            .map_err(|err| ExecutionError::MissingDefinition { path, err })?;
+        let definition_path = joined(&execution_dir, &path);
+        debug!("Reading job definition from {}", definition_path);
+        let job_definition = tokio::fs::read_to_string(&path).await.map_err(|err| {
+            ExecutionError::MissingDefinition {
+                path: definition_path,
+                err,
+            }
+        })?;
         let job_definition: Job = serde_json::from_str(&job_definition)?;
         debug!("Read job definition: {:?}", job_definition);
         for stage in job_definition.stages {
             debug!("Running stage: {:?}", stage);
             let Stage { cmd, args, path } = stage;
-            let path = std::path::PathBuf::from(&execution_dir)
-                .join(path)
-                .to_string_lossy()
-                .to_string();
+            let path = joined(&execution_dir, &path);
             let output = tokio::process::Command::new(&cmd)
                 .args(&args)
                 .current_dir(&path)
@@ -73,6 +71,13 @@ pub async fn execute_job(
     Ok(output_builder.build())
 }
 
+fn joined(base: &str, suffix: &str) -> String {
+    std::path::PathBuf::from(base)
+        .join(suffix)
+        .to_string_lossy()
+        .to_string()
+}
+
 struct OutputBuilder {
     outputs: Vec<StageExecutionSummary>,
     output_writer: OutputWriter,
@@ -82,24 +87,26 @@ impl OutputBuilder {
     fn new(output_writer: OutputWriter) -> Self {
         OutputBuilder {
             outputs: Vec::new(),
-            output_writer
+            output_writer,
         }
     }
 
     fn last_stage_successful(&self) -> bool {
-        self.outputs.last().map(|summary| summary.status == 0).unwrap_or(true)
+        self.outputs
+            .last()
+            .map(|summary| summary.status == 0)
+            .unwrap_or(true)
     }
 
     async fn add(&mut self, output: &std::process::Output) -> Result<(), OutputWriteError> {
         let logs = self.output_writer.write(output).await?;
         let summary = StageExecutionSummary {
             status: output.status.code().unwrap_or(-1),
-            logs
+            logs,
         };
         self.outputs.push(summary);
         Ok(())
     }
-
 
     fn build(self) -> Vec<StageExecutionSummary> {
         self.outputs
@@ -134,6 +141,7 @@ pub async fn schedule_job(
     } = job;
 
     tokio::spawn(async move {
+        debug!("Created loop to run {}", name);
         let mut interval = create_intervel(hour, minute);
         loop {
             interval.tick().await;
