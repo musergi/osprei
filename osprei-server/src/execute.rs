@@ -14,33 +14,27 @@ pub struct JobExecutionOptions {
 }
 
 pub async fn execute_job(
-    options: JobExecutionOptions,
-) -> Result<Vec<StageExecutionSummary>, ExecutionError> {
-    let JobExecutionOptions {
+    JobExecutionOptions {
         execution_dir,
         result_dir,
         source,
         path,
-    } = options;
+    }: JobExecutionOptions,
+) -> Result<Vec<StageExecutionSummary>, ExecutionError> {
     if tokio::fs::remove_dir_all(&execution_dir).await.is_ok() {
         info!("Clean up directory: {}", execution_dir);
     }
-    let mut output_writer = OutputWriter::new(result_dir);
-    output_writer.ensure_result_dir().await?;
-    let mut outputs = Vec::new();
-    let checkout_output = tokio::process::Command::new("git")
+    let output_writer = OutputWriter::new(result_dir).await?;
+    let mut output_builder = OutputBuilder::new(output_writer);
+    let output = tokio::process::Command::new("git")
         .arg("clone")
         .arg(&source)
         .arg(&execution_dir)
         .output()
         .await
         .map_err(ExecutionError::SubProccess)?;
-    let logs = output_writer.write(&checkout_output).await?;
-    outputs.push(StageExecutionSummary {
-        status: checkout_output.status.code().unwrap_or(-1),
-        logs,
-    });
-    if checkout_output.status.success() {
+    output_builder.add(&output).await?;
+    if output_builder.last_stage_successful() {
         info!("Code checkout complete for: {}", source);
         let path = std::path::PathBuf::from(&execution_dir)
             .join(path)
@@ -58,7 +52,7 @@ pub async fn execute_job(
                 .join(path)
                 .to_string_lossy()
                 .to_string();
-            let stage_output = tokio::process::Command::new(&cmd)
+            let output = tokio::process::Command::new(&cmd)
                 .args(&args)
                 .current_dir(&path)
                 .output()
@@ -70,17 +64,46 @@ pub async fn execute_job(
                     error!("Path: {}", path);
                     ExecutionError::SubProccess(err)
                 })?;
-            let logs = output_writer.write(&stage_output).await?;
-            outputs.push(StageExecutionSummary {
-                status: stage_output.status.code().unwrap_or(-1),
-                logs,
-            });
-            if !stage_output.status.success() {
+            output_builder.add(&output).await?;
+            if !output_builder.last_stage_successful() {
                 break;
             }
         }
     }
-    Ok(outputs)
+    Ok(output_builder.build())
+}
+
+struct OutputBuilder {
+    outputs: Vec<StageExecutionSummary>,
+    output_writer: OutputWriter,
+}
+
+impl OutputBuilder {
+    fn new(output_writer: OutputWriter) -> Self {
+        OutputBuilder {
+            outputs: Vec::new(),
+            output_writer
+        }
+    }
+
+    fn last_stage_successful(&self) -> bool {
+        self.outputs.last().map(|summary| summary.status == 0).unwrap_or(true)
+    }
+
+    async fn add(&mut self, output: &std::process::Output) -> Result<(), OutputWriteError> {
+        let logs = self.output_writer.write(output).await?;
+        let summary = StageExecutionSummary {
+            status: output.status.code().unwrap_or(-1),
+            logs
+        };
+        self.outputs.push(summary);
+        Ok(())
+    }
+
+
+    fn build(self) -> Vec<StageExecutionSummary> {
+        self.outputs
+    }
 }
 
 pub async fn write_result(
@@ -188,18 +211,20 @@ struct OutputWriter {
 }
 
 impl OutputWriter {
-    fn new(result_dir: String) -> Self {
-        Self {
+    async fn new(result_dir: String) -> Result<Self, OutputWriteError> {
+        tokio::fs::create_dir_all(&result_dir)
+            .await
+            .map_err(|err| OutputWriteError(result_dir.clone(), err))?;
+        Ok(Self {
             result_dir,
             counter: 0,
-        }
+        })
     }
 
     async fn write(
         &mut self,
         output: &std::process::Output,
     ) -> Result<osprei::WrittenResult, OutputWriteError> {
-        self.ensure_result_dir().await?;
         let stdout_path = self.write_stdout(&output.stdout).await?;
         let stderr_path = self.write_stderr(&output.stderr).await?;
         self.counter += 1;
@@ -207,12 +232,6 @@ impl OutputWriter {
             stdout_path,
             stderr_path,
         })
-    }
-
-    async fn ensure_result_dir(&self) -> Result<(), OutputWriteError> {
-        tokio::fs::create_dir_all(self.result_dir.clone())
-            .await
-            .map_err(|err| OutputWriteError(self.result_dir.clone(), err))
     }
 
     async fn write_stdout(&self, stdout: impl AsRef<[u8]>) -> Result<String, OutputWriteError> {
