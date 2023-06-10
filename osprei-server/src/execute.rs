@@ -26,14 +26,7 @@ pub async fn execute_job(
     }
     let output_writer = OutputWriter::new(result_dir).await?;
     let mut output_builder = OutputBuilder::new(output_writer);
-    let output = tokio::process::Command::new("git")
-        .arg("clone")
-        .arg(&source)
-        .arg(&execution_dir)
-        .output()
-        .await
-        .map_err(ExecutionError::SubProccess)?;
-    output_builder.add(&output).await?;
+    checkout_repo(&mut output_builder, &execution_dir, &source).await?;
     if output_builder.last_stage_successful() {
         info!("Code checkout complete for: {}", source);
         let definition_path = joined(&execution_dir, &path);
@@ -69,6 +62,18 @@ pub async fn execute_job(
         }
     }
     Ok(output_builder.build())
+}
+
+async fn checkout_repo(output_builder: &mut OutputBuilder, execution_dir: &str, source: &str) -> Result<(), ExecutionError> {
+    let output = tokio::process::Command::new("git")
+        .arg("clone")
+        .arg(source)
+        .arg(execution_dir)
+        .output()
+        .await
+        .map_err(ExecutionError::SubProccess)?;
+    output_builder.add(&output).await?;
+    Ok(())
 }
 
 fn joined(base: &str, suffix: &str) -> String {

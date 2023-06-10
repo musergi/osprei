@@ -1,7 +1,7 @@
 use std::net::SocketAddr;
 
 use clap::Parser;
-use log::{debug, info};
+use log::{debug, info, error};
 use osprei_server::persistance::PersistanceConfig;
 use osprei_server::{execute, persistance};
 use osprei_server::{views, PathBuilder};
@@ -27,6 +27,13 @@ async fn main() {
         address,
         persistance,
     } = Config::read(&args.config_path);
+    let address = match address.parse::<SocketAddr>() {
+        Ok(addr) => addr,
+        Err(err) => {
+            error!("invalid configuration: could not parse adress: {}", err);
+            std::process::exit(1)
+        }
+    };
     let path_builder = osprei_server::PathBuilder::new(data_path);
     let persistance = persistance::build(persistance).await;
     build_workspace(path_builder.workspaces()).await;
@@ -104,7 +111,7 @@ async fn main() {
                     .allow_methods(vec!["GET", "POST"]),
             ),
     )
-    .run(address.parse::<SocketAddr>().unwrap())
+    .run(address)
     .await;
 }
 
