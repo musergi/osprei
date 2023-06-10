@@ -146,39 +146,73 @@ pub async fn schedule_job(
     } = job;
 
     tokio::spawn(async move {
-        debug!("Created loop to run {}", name);
-        let mut interval = create_intervel(hour, minute);
-        loop {
-            interval.tick().await;
-            let execution_id = store.create_execution(id).await;
-            let options = JobExecutionOptions {
-                execution_dir: path_builder.workspace(&name),
-                result_dir: path_builder.results(&name, execution_id),
-                source: source.clone(),
-                path: path.clone(),
-            };
-            match execute_job(options).await {
-                Ok(outputs) => {
-                    write_result(execution_id, &outputs, store.as_ref()).await;
+        match create_intervel(hour, minute) {
+            Ok(mut interval) => {
+                debug!("Created loop to run {}", name);
+                loop {
+                    interval.tick().await;
+                    let execution_id = store.create_execution(id).await;
+                    let options = JobExecutionOptions {
+                        execution_dir: path_builder.workspace(&name),
+                        result_dir: path_builder.results(&name, execution_id),
+                        source: source.clone(),
+                        path: path.clone(),
+                    };
+                    match execute_job(options).await {
+                        Ok(outputs) => {
+                            write_result(execution_id, &outputs, store.as_ref()).await;
+                        }
+                        Err(err) => error!("An error occurred during job executions: {}", err),
+                    }
                 }
-                Err(err) => error!("An error occurred during job executions: {}", err),
+            },
+            Err(err) => {
+                error!("Could not schedule: {}", err);
             }
         }
     });
 }
 
-fn create_intervel(hour: u8, minute: u8) -> tokio::time::Interval {
+fn create_intervel(hour: u8, minute: u8) -> Result<tokio::time::Interval, IntervalCreationError> {
     let now = chrono::Utc::now();
     let start = now
-        .duration_trunc(chrono::Duration::days(1))
-        .unwrap()
+        .duration_trunc(chrono::Duration::days(1))?
         .checked_add_signed(chrono::Duration::minutes(hour as i64 * 60 + minute as i64))
-        .unwrap()
+        .ok_or(IntervalCreationError::AddingError)?
         .signed_duration_since(now);
-    tokio::time::interval_at(
-        tokio::time::Instant::now() + start.to_std().unwrap(),
+    Ok(tokio::time::interval_at(
+        tokio::time::Instant::now() + start.to_std()?,
         std::time::Duration::from_secs(24 * 60 * 60),
-    )
+    ))
+}
+
+#[derive(Debug)]
+enum IntervalCreationError {
+    TrucationError(chrono::RoundingError),
+    AddingError,
+    DateCastError(chrono::OutOfRangeError),
+}
+
+impl std::fmt::Display for IntervalCreationError {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            Self::TrucationError(err) => write!(f, "failed to perform daily truncation: {}", err),
+            Self::AddingError => write!(f, "failed to perform specified offset"),
+            Self::DateCastError(err) => write!(f, "failed to cast date: {}", err),
+        }
+    }
+}
+
+impl From<chrono::RoundingError> for IntervalCreationError {
+    fn from(value: chrono::RoundingError) -> Self {
+        IntervalCreationError::TrucationError(value)
+    }
+}
+
+impl From<chrono::OutOfRangeError> for IntervalCreationError {
+    fn from(value: chrono::OutOfRangeError) -> Self {
+        IntervalCreationError::DateCastError(value)
+    }
 }
 
 #[derive(Debug)]
