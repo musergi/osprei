@@ -64,7 +64,11 @@ pub async fn execute_job(
     Ok(output_builder.build())
 }
 
-async fn checkout_repo(output_builder: &mut OutputBuilder, execution_dir: &str, source: &str) -> Result<(), ExecutionError> {
+async fn checkout_repo(
+    output_builder: &mut OutputBuilder,
+    execution_dir: &str,
+    source: &str,
+) -> Result<(), ExecutionError> {
     let output = tokio::process::Command::new("git")
         .arg("clone")
         .arg(source)
@@ -165,7 +169,7 @@ pub async fn schedule_job(
                         Err(err) => error!("An error occurred during job executions: {}", err),
                     }
                 }
-            },
+            }
             Err(err) => {
                 error!("Could not schedule: {}", err);
             }

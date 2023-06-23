@@ -1,11 +1,10 @@
 use std::net::SocketAddr;
 
 use clap::Parser;
-use log::{debug, info, error};
-use osprei_server::persistance::PersistanceConfig;
+use log::{debug, error, info};
 use osprei_server::{execute, persistance};
 use osprei_server::{views, PathBuilder};
-use serde::{Deserialize, Serialize};
+use osprei_server::config::Config;
 use warp::Filter;
 
 /// Osprei CI server
@@ -26,14 +25,7 @@ async fn main() {
         data_path,
         address,
         persistance,
-    } = Config::read(&args.config_path);
-    let address = match address.parse::<SocketAddr>() {
-        Ok(addr) => addr,
-        Err(err) => {
-            error!("invalid configuration: could not parse adress: {}", err);
-            std::process::exit(1)
-        }
-    };
+    } = Config::read(&args.config_path).unwrap();
     let path_builder = osprei_server::PathBuilder::new(data_path);
     let persistance = persistance::build(persistance).await;
     build_workspace(path_builder.workspaces()).await;
@@ -123,18 +115,4 @@ fn with_path_builder(
     path_builder: PathBuilder,
 ) -> impl Filter<Extract = (PathBuilder,), Error = std::convert::Infallible> + Clone {
     warp::any().map(move || path_builder.clone())
-}
-
-#[derive(Deserialize, Serialize, Debug)]
-struct Config {
-    data_path: String,
-    address: String,
-    persistance: PersistanceConfig,
-}
-
-impl Config {
-    fn read(path: &str) -> Self {
-        let file = std::fs::File::open(path).unwrap();
-        serde_json::from_reader(file).unwrap()
-    }
 }
