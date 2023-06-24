@@ -60,6 +60,8 @@ impl std::fmt::Display for ConfigError {
     }
 }
 
+impl std::error::Error for ConfigError {}
+
 impl ConfigError {
     fn file(path: String, inner: std::io::Error) -> Self {
         ConfigError::File { path, inner }

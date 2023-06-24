@@ -184,7 +184,9 @@ fn create_interval(hour: u8, minute: u8) -> Result<tokio::time::Interval, Interv
         .checked_add_signed(chrono::Duration::minutes(hour as i64 * 60 + minute as i64))
         .ok_or(IntervalCreationError::AddingError)?;
     if start < now {
-        start = start.checked_add_signed(chrono::Duration::days(1)).ok_or(IntervalCreationError::AddingError)?;
+        start = start
+            .checked_add_signed(chrono::Duration::days(1))
+            .ok_or(IntervalCreationError::AddingError)?;
     }
     let offset = start.signed_duration_since(now);
     Ok(tokio::time::interval_at(
