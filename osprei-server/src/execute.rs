@@ -150,7 +150,7 @@ pub async fn schedule_job(
     } = job;
 
     tokio::spawn(async move {
-        match create_intervel(hour, minute) {
+        match create_interval(hour, minute) {
             Ok(mut interval) => {
                 debug!("Created loop to run {}", name);
                 loop {
@@ -177,15 +177,18 @@ pub async fn schedule_job(
     });
 }
 
-fn create_intervel(hour: u8, minute: u8) -> Result<tokio::time::Interval, IntervalCreationError> {
+fn create_interval(hour: u8, minute: u8) -> Result<tokio::time::Interval, IntervalCreationError> {
     let now = chrono::Utc::now();
-    let start = now
+    let mut start = now
         .duration_trunc(chrono::Duration::days(1))?
         .checked_add_signed(chrono::Duration::minutes(hour as i64 * 60 + minute as i64))
-        .ok_or(IntervalCreationError::AddingError)?
-        .signed_duration_since(now);
+        .ok_or(IntervalCreationError::AddingError)?;
+    if start < now {
+        start = start.checked_add_signed(chrono::Duration::days(1)).ok_or(IntervalCreationError::AddingError)?;
+    }
+    let offset = start.signed_duration_since(now);
     Ok(tokio::time::interval_at(
-        tokio::time::Instant::now() + start.to_std()?,
+        tokio::time::Instant::now() + offset.to_std()?,
         std::time::Duration::from_secs(24 * 60 * 60),
     ))
 }
@@ -318,3 +321,13 @@ impl std::fmt::Display for OutputWriteError {
 }
 
 impl std::error::Error for OutputWriteError {}
+
+#[cfg(test)]
+mod test {
+    use super::create_interval;
+
+    #[tokio::test]
+    async fn test_interval_generation() {
+        create_interval(12, 0).unwrap();
+    }
+}
