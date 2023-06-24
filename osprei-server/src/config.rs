@@ -1,4 +1,5 @@
 use super::persistance::PersistanceConfig;
+use log::info;
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 struct SerializedConfig {
@@ -15,7 +16,9 @@ pub struct Config {
 
 impl Config {
     pub fn read(path: &str) -> Result<Self, ConfigError> {
-        let file = std::fs::File::open(path).map_err(|err| ConfigError::file(String::from(path), err))?;
+        info!("Reading config from: {}", path);
+        let file =
+            std::fs::File::open(path).map_err(|err| ConfigError::file(String::from(path), err))?;
         let serde_config: SerializedConfig = serde_json::from_reader(file)?;
         Self::try_from(serde_config)
     }
@@ -24,9 +27,19 @@ impl Config {
 impl TryFrom<SerializedConfig> for Config {
     type Error = ConfigError;
 
-    fn try_from(SerializedConfig{address, data_path, persistance}: SerializedConfig) -> Result<Self, Self::Error> {
+    fn try_from(
+        SerializedConfig {
+            address,
+            data_path,
+            persistance,
+        }: SerializedConfig,
+    ) -> Result<Self, Self::Error> {
         let address = address.parse()?;
-        Ok(Config{address, data_path, persistance})
+        Ok(Config {
+            address,
+            data_path,
+            persistance,
+        })
     }
 }
 

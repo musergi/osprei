@@ -1,6 +1,7 @@
 pub mod config;
 pub mod execute;
 pub mod persistance;
+pub mod routes;
 pub mod views;
 
 #[derive(Debug, Clone)]
