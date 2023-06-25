@@ -31,7 +31,7 @@ pub async fn execute_job(
         info!("Code checkout complete for: {}", source);
         let definition_path = joined(&execution_dir, &path);
         debug!("Reading job definition from {}", definition_path);
-        let job_definition = tokio::fs::read_to_string(&path).await.map_err(|err| {
+        let job_definition = tokio::fs::read_to_string(&definition_path).await.map_err(|err| {
             ExecutionError::MissingDefinition {
                 path: definition_path,
                 err,
