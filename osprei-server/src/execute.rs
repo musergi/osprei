@@ -135,6 +135,21 @@ pub async fn write_result(
     store.set_execution_status(execution_id, status).await;
 }
 
+pub async fn schedule_all(persistance: crate::persistance::Persistances, path_builder: crate::PathBuilder) {
+    for schedule in persistance.boxed().get_all_schedules().await {
+        let osprei::Schedule {
+            job_id,
+            hour,
+            minute,
+            ..
+        } = schedule;
+        let job = persistance.boxed().fetch_job(job_id).await;
+        debug!("Scheduling {} for {}h{}", job.name, hour, minute);
+        schedule_job(job, hour, minute, path_builder.clone(), persistance.boxed())
+            .await;
+    }
+}
+
 pub async fn schedule_job(
     job: osprei::JobPointer,
     hour: u8,

@@ -1,11 +1,10 @@
 use log::error;
 
 use clap::Parser;
-use log::debug;
+use warp::Filter;
 use osprei_server::config::Config;
 use osprei_server::routes::routes;
 use osprei_server::{execute, persistance};
-use warp::Filter;
 
 /// Osprei CI server
 #[derive(Parser, Debug)]
@@ -30,18 +29,7 @@ async fn main() {
             let path_builder = osprei_server::PathBuilder::new(data_path);
             let persistance = persistance::build(persistance).await;
             build_workspace(path_builder.workspaces()).await;
-            for schedule in persistance.boxed().get_all_schedules().await {
-                let osprei::Schedule {
-                    job_id,
-                    hour,
-                    minute,
-                    ..
-                } = schedule;
-                let job = persistance.boxed().fetch_job(job_id).await;
-                debug!("Scheduling {} for {}h{}", job.name, hour, minute);
-                execute::schedule_job(job, hour, minute, path_builder.clone(), persistance.boxed())
-                    .await;
-            }
+            execute::schedule_all(persistance.clone(), path_builder.clone()).await;
             warp::serve(
                 warp::any().and(routes(path_builder, persistance)).with(
                     warp::cors()
