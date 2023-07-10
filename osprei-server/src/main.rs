@@ -1,10 +1,10 @@
 use log::error;
 
 use clap::Parser;
-use warp::Filter;
 use osprei_server::config::Config;
 use osprei_server::routes::routes;
 use osprei_server::{execute, persistance};
+use warp::Filter;
 
 /// Osprei CI server
 #[derive(Parser, Debug)]

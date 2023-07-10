@@ -31,12 +31,12 @@ pub async fn execute_job(
         info!("Code checkout complete for: {}", source);
         let definition_path = joined(&execution_dir, &path);
         debug!("Reading job definition from {}", definition_path);
-        let job_definition = tokio::fs::read_to_string(&definition_path).await.map_err(|err| {
-            ExecutionError::MissingDefinition {
+        let job_definition = tokio::fs::read_to_string(&definition_path)
+            .await
+            .map_err(|err| ExecutionError::MissingDefinition {
                 path: definition_path,
                 err,
-            }
-        })?;
+            })?;
         let job_definition: Job = serde_json::from_str(&job_definition)?;
         debug!("Read job definition: {:?}", job_definition);
         for stage in job_definition.stages {
@@ -135,7 +135,10 @@ pub async fn write_result(
     store.set_execution_status(execution_id, status).await;
 }
 
-pub async fn schedule_all(persistance: crate::persistance::Persistances, path_builder: crate::PathBuilder) {
+pub async fn schedule_all(
+    persistance: crate::persistance::Persistances,
+    path_builder: crate::PathBuilder,
+) {
     for schedule in persistance.boxed().get_all_schedules().await {
         let osprei::Schedule {
             job_id,
@@ -145,8 +148,7 @@ pub async fn schedule_all(persistance: crate::persistance::Persistances, path_bu
         } = schedule;
         let job = persistance.boxed().fetch_job(job_id).await;
         debug!("Scheduling {} for {}h{}", job.name, hour, minute);
-        schedule_job(job, hour, minute, path_builder.clone(), persistance.boxed())
-            .await;
+        schedule_job(job, hour, minute, path_builder.clone(), persistance.boxed()).await;
     }
 }
 
