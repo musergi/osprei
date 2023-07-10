@@ -48,34 +48,13 @@ async fn main() {
     let Args { server, commands } = Args::parse();
     match commands {
         Commands::JobsList => {
-            let url = format!("{}/job", server);
-            let body = reqwest::get(&url).await.unwrap().text().await.unwrap();
-            let job_ids: Vec<i64> = serde_json::from_str(&body).unwrap();
-            if job_ids.is_empty() {
+            let jobs = osprei_cli::Client::new(server).jobs_list().await;
+            if jobs.is_empty() {
                 println!("No jobs yet, try adding a job.");
             } else {
                 println!("id\tname\tstatus");
-                for job_id in job_ids {
-                    let url = format!("{}/job/{}", server, job_id);
-                    let body = reqwest::get(&url).await.unwrap().text().await.unwrap();
-                    let osprei::JobPointer { id, name, .. } = serde_json::from_str(&body).unwrap();
-                    let url = format!("{}/job/{}/executions", server, job_id);
-                    let body = reqwest::get(&url).await.unwrap().text().await.unwrap();
-                    let executions: Vec<osprei::ExecutionSummary> = serde_json::from_str(&body).unwrap();
-                    let last_status = match executions.get(0) {
-                        Some(osprei::ExecutionSummary{id, ..}) => {
-                            let url = format!("{}/execution/{}", server, id);
-                            let body = reqwest::get(&url).await.unwrap().text().await.unwrap();
-                            let osprei::ExecutionDetails {status, ..} = serde_json::from_str(&body).unwrap();
-                            match status {
-                                Some(0) => "Success",
-                                None => "Running",
-                                _ => "Failure"
-                            }
-                        }
-                        None => "Not executed",
-                    };
-                    println!("{}\t{}\t{}", id, name, last_status);
+                for osprei_cli::JobLine { id, name, status } in jobs {
+                    println!("{}\t{}\t{}", id, name, status);
                 }
             }
         }
