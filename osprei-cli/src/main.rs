@@ -16,11 +16,11 @@ struct Args {
 
 #[derive(Subcommand, Debug)]
 enum Commands {
-    JobsList,
-    JobsAdd(JobAddArgs),
-    JobsRun { job_id: i64 },
-    JobsDescribe { job_id: i64 },
-    JobsSchedule(JobScheduleArgs),
+    List,
+    Add(JobAddArgs),
+    Run { job_id: i64 },
+    Describe { job_id: i64 },
+    Schedule(JobScheduleArgs),
 }
 
 #[derive(Parser, Debug)]
@@ -47,7 +47,7 @@ struct JobScheduleArgs {
 async fn main() {
     let Args { server, commands } = Args::parse();
     match commands {
-        Commands::JobsList => {
+        Commands::List => {
             let jobs = osprei_cli::Client::new(server).jobs_list().await;
             if jobs.is_empty() {
                 println!("No jobs yet, try adding a job.");
@@ -58,7 +58,7 @@ async fn main() {
                 }
             }
         }
-        Commands::JobsAdd(JobAddArgs { name, source, path }) => {
+        Commands::Add(JobAddArgs { name, source, path }) => {
             let url = format!("{}/job", server);
             let req = osprei::JobCreationRequest { name, source, path };
             let response = reqwest::Client::new()
@@ -73,13 +73,13 @@ async fn main() {
                 println!("Failed to create job.");
             }
         }
-        Commands::JobsRun { job_id } => {
+        Commands::Run { job_id } => {
             let url = format!("{}/job/{}/run", server, job_id);
             let response = reqwest::get(url).await.unwrap().text().await.unwrap();
             let execution_id: i64 = serde_json::from_str(&response).unwrap();
             println!("Created execution with id {}.", execution_id);
         }
-        Commands::JobsDescribe { job_id } => {
+        Commands::Describe { job_id } => {
             let url = format!("{}/job/{}", server, job_id);
             let body = reqwest::get(&url).await.unwrap().text().await.unwrap();
             let osprei::JobPointer {
@@ -109,7 +109,7 @@ async fn main() {
                 println!("Not executed yet.");
             }
         }
-        Commands::JobsSchedule(JobScheduleArgs { id, hour, minute }) => {
+        Commands::Schedule(JobScheduleArgs { id, hour, minute }) => {
             let url = format!("{}/job/{}/schedule", server, id);
             let req = osprei::ScheduleRequest { hour, minute };
             let response = Client::new()
