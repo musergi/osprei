@@ -11,6 +11,16 @@ pub struct Stage {
     pub args: Vec<String>,
     /// Working directory, relative to source root
     pub path: String,
+    /// Environment variables for execution
+    pub env: Vec<EnvironmentDefinition>,
+}
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+pub struct EnvironmentDefinition {
+    /// Name of the variable to set
+    pub key: String,
+    /// Value of the variable to set
+    pub value: String,
 }
 
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]

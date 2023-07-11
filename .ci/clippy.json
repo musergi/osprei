@@ -1,0 +1,17 @@
+{
+    "stages": [
+        {
+            "cmd": "cargo"
+            "args": [
+                "clippy"
+            ],
+            "path": ".",
+            "env": [
+                {
+                    "key": "RUSTFLAGS",
+                    "value": "-Dwarnings"
+                }
+            ]
+        }
+    ]
+}

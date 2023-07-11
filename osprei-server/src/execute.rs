@@ -1,6 +1,7 @@
+use std::collections::HashMap;
 use chrono::DurationRound;
 use log::{debug, error, info};
-use osprei::{Job, Stage, StageExecutionSummary};
+use osprei::{Job, Stage, StageExecutionSummary, EnvironmentDefinition};
 
 pub struct JobExecutionOptions {
     /// Clone directory for the source repo
@@ -41,11 +42,13 @@ pub async fn execute_job(
         debug!("Read job definition: {:?}", job_definition);
         for stage in job_definition.stages {
             debug!("Running stage: {:?}", stage);
-            let Stage { cmd, args, path } = stage;
+            let Stage { cmd, args, path, env } = stage;
             let path = joined(&execution_dir, &path);
+            let env: HashMap<_,_> = env.into_iter().map(|EnvironmentDefinition{key, value}| (key, value)).collect();
             let output = tokio::process::Command::new(&cmd)
                 .args(&args)
                 .current_dir(&path)
+                .envs(env)
                 .output()
                 .await
                 .map_err(|err| {
