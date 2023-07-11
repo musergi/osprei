@@ -199,11 +199,11 @@ fn create_interval(hour: u8, minute: u8) -> Result<tokio::time::Interval, Interv
     let mut start = now
         .duration_trunc(chrono::Duration::days(1))?
         .checked_add_signed(chrono::Duration::minutes(hour as i64 * 60 + minute as i64))
-        .ok_or(IntervalCreationError::AddingError)?;
+        .ok_or(IntervalCreationError::TimestampArithmetic)?;
     if start < now {
         start = start
             .checked_add_signed(chrono::Duration::days(1))
-            .ok_or(IntervalCreationError::AddingError)?;
+            .ok_or(IntervalCreationError::TimestampArithmetic)?;
     }
     let offset = start.signed_duration_since(now);
     Ok(tokio::time::interval_at(
@@ -214,30 +214,30 @@ fn create_interval(hour: u8, minute: u8) -> Result<tokio::time::Interval, Interv
 
 #[derive(Debug)]
 enum IntervalCreationError {
-    TrucationError(chrono::RoundingError),
-    AddingError,
-    DateCastError(chrono::OutOfRangeError),
+    Truncation(chrono::RoundingError),
+    TimestampArithmetic,
+    DateCast(chrono::OutOfRangeError),
 }
 
 impl std::fmt::Display for IntervalCreationError {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
-            Self::TrucationError(err) => write!(f, "failed to perform daily truncation: {}", err),
-            Self::AddingError => write!(f, "failed to perform specified offset"),
-            Self::DateCastError(err) => write!(f, "failed to cast date: {}", err),
+            Self::Truncation(err) => write!(f, "failed to perform daily truncation: {}", err),
+            Self::TimestampArithmetic => write!(f, "failed to perform specified offset"),
+            Self::DateCast(err) => write!(f, "failed to cast date: {}", err),
         }
     }
 }
 
 impl From<chrono::RoundingError> for IntervalCreationError {
     fn from(value: chrono::RoundingError) -> Self {
-        IntervalCreationError::TrucationError(value)
+        IntervalCreationError::Truncation(value)
     }
 }
 
 impl From<chrono::OutOfRangeError> for IntervalCreationError {
     fn from(value: chrono::OutOfRangeError) -> Self {
-        IntervalCreationError::DateCastError(value)
+        IntervalCreationError::DateCast(value)
     }
 }
 

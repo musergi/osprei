@@ -43,7 +43,7 @@ pub fn routes(
         .and(warp::post())
         .and(warp::body::json())
         .and(with_path_builder(path_builder))
-        .and(persistance::with(persistance.clone()))
+        .and(persistance::with(persistance))
         .and_then(views::post_job_schedule);
     get_jobs
         .or(get_job)
