@@ -31,26 +31,30 @@ async fn main() {
             build_workspace(path_builder.workspaces()).await;
             execute::schedule_all(persistance.clone(), path_builder.clone()).await;
             warp::serve(
-                warp::any().and(routes(path_builder, persistance)).with(
-                    warp::cors()
-                        .allow_any_origin()
-                        .allow_headers(vec![
-                            "User-Agent",
-                            "Sec-Fetch-Mode",
-                            "Referer",
-                            "Origin",
-                            "Access-Control-Request-Method",
-                            "Access-Control-Request-Headers",
-                            "Content-Type",
-                        ])
-                        .allow_methods(vec!["GET", "POST"]),
-                ),
+                warp::any()
+                    .and(routes(path_builder, persistance))
+                    .with(cors()),
             )
             .run(address)
             .await;
         }
         Err(err) => error!("Config error: {}", err),
     };
+}
+
+fn cors() -> warp::cors::Builder {
+    warp::cors()
+        .allow_any_origin()
+        .allow_headers(vec![
+            "User-Agent",
+            "Sec-Fetch-Mode",
+            "Referer",
+            "Origin",
+            "Access-Control-Request-Method",
+            "Access-Control-Request-Headers",
+            "Content-Type",
+        ])
+        .allow_methods(vec!["GET", "POST"])
 }
 
 async fn build_workspace(workspace_dir: &str) {
