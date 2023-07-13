@@ -52,7 +52,7 @@ async fn main() {
             if jobs.is_empty() {
                 println!("No jobs yet, try adding a job.");
             } else {
-                println!("id\tname\tstatus");
+                println!("Id\tName\tStatus");
                 for osprei_cli::JobLine { id, name, status } in jobs {
                     println!("{}\t{}\t{}", id, name, status);
                 }
