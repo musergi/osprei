@@ -1,7 +1,7 @@
 {
     "stages": [
         {
-            "cmd": "cargo"
+            "cmd": "cargo",
             "args": [
                 "clippy"
             ],
