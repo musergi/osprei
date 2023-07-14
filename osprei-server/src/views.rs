@@ -51,7 +51,10 @@ pub async fn get_job_run(
                 Ok(outputs) => {
                     execute::write_result(execution_id, &outputs, store.as_ref()).await;
                 }
-                Err(err) => error!("An error occurred during job executions: {}", err),
+                Err(err) => {
+                    error!("An error occurred during job executions: {}", err);
+                    execute::write_error(execution_id, store.as_ref()).await;
+                }
             }
         });
     }

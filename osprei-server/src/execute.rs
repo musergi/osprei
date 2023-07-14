@@ -1,7 +1,7 @@
-use std::collections::HashMap;
 use chrono::DurationRound;
 use log::{debug, error, info};
-use osprei::{Job, Stage, StageExecutionSummary, EnvironmentDefinition};
+use osprei::{EnvironmentDefinition, Job, Stage, StageExecutionSummary};
+use std::collections::HashMap;
 
 pub struct JobExecutionOptions {
     /// Clone directory for the source repo
@@ -42,9 +42,17 @@ pub async fn execute_job(
         debug!("Read job definition: {:?}", job_definition);
         for stage in job_definition.stages {
             debug!("Running stage: {:?}", stage);
-            let Stage { cmd, args, path, env } = stage;
+            let Stage {
+                cmd,
+                args,
+                path,
+                env,
+            } = stage;
             let path = joined(&execution_dir, &path);
-            let env: HashMap<_,_> = env.into_iter().map(|EnvironmentDefinition{key, value}| (key, value)).collect();
+            let env: HashMap<_, _> = env
+                .into_iter()
+                .map(|EnvironmentDefinition { key, value }| (key, value))
+                .collect();
             let output = tokio::process::Command::new(&cmd)
                 .args(&args)
                 .current_dir(&path)
@@ -136,6 +144,10 @@ pub async fn write_result(
         true => 1,
     };
     store.set_execution_status(execution_id, status).await;
+}
+
+pub async fn write_error(execution_id: i64, store: &dyn crate::persistance::Store) {
+    store.set_execution_status(execution_id, 2).await;
 }
 
 pub async fn schedule_all(
