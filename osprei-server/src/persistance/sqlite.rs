@@ -94,11 +94,12 @@ impl ExecutionStore for DatabasePersistance {
             .last_insert_rowid()
     }
 
-    async fn set_execution_status(&self, id: i64, execution_status: i64) {
+    async fn set_execution_status(&self, id: i64, execution_status: osprei::ExecutionStatus) {
+        let value: i64 = execution_status.into();
         let mut conn = self.pool.acquire().await.unwrap();
         sqlx::query("UPDATE executions SET status = $2 WHERE id = $1;")
             .bind(id)
-            .bind(execution_status)
+            .bind(value)
             .execute(&mut conn)
             .await
             .unwrap();
@@ -110,11 +111,15 @@ impl ExecutionStore for DatabasePersistance {
             .bind(id)
             .fetch_one(&mut conn)
             .await
-            .map(|row| ExecutionDetails {
-                execution_id: row.get(0),
-                job_name: row.get(1),
-                start_time: row.get(2),
-                status: row.get(3)
+            .map(|row| {
+                let status_encoded: Option<i64> = row.get(3);
+                let status = status_encoded.map(osprei::ExecutionStatus::from);
+                ExecutionDetails {
+                    execution_id: row.get(0),
+                    job_name: row.get(1),
+                    start_time: row.get(2),
+                    status
+                }
             })
             .unwrap()
     }

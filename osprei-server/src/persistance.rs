@@ -11,7 +11,7 @@ pub trait JobStore {
 #[async_trait::async_trait]
 pub trait ExecutionStore {
     async fn create_execution(&self, job_id: i64) -> i64;
-    async fn set_execution_status(&self, id: i64, execution_status: i64);
+    async fn set_execution_status(&self, id: i64, execution_status: osprei::ExecutionStatus);
     async fn get_execution(&self, id: i64) -> osprei::ExecutionDetails;
     async fn last_executions(&self, job_id: i64, limit: usize) -> Vec<osprei::ExecutionSummary>;
 }
@@ -98,9 +98,11 @@ mod tests {
         assert_eq!(execution.job_name, name);
         assert!(execution.status.is_none());
 
-        store.set_execution_status(execution_id, 0).await;
+        store
+            .set_execution_status(execution_id, osprei::ExecutionStatus::Success)
+            .await;
         let execution = store.get_execution(execution_id).await;
-        assert_eq!(execution.status, Some(0));
+        assert_eq!(execution.status, Some(osprei::ExecutionStatus::Success));
     }
 
     pub async fn test_schedule_store<T: super::ScheduleStore + super::JobStore>(store: T) {

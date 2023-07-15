@@ -25,7 +25,7 @@ struct Execution {
     id: i64,
     job_id: i64,
     start_time: u64,
-    status: Option<i64>,
+    status: Option<osprei::ExecutionStatus>,
 }
 
 #[async_trait::async_trait]
@@ -77,7 +77,7 @@ impl ExecutionStore for MemoryStore {
         id
     }
 
-    async fn set_execution_status(&self, id: i64, execution_status: i64) {
+    async fn set_execution_status(&self, id: i64, execution_status: osprei::ExecutionStatus) {
         let mut data = self.data.lock().await;
         let execution = data.executions.get_mut(&id).unwrap();
         execution.status = Some(execution_status);

@@ -68,7 +68,35 @@ pub struct ExecutionDetails {
     pub execution_id: i64,
     pub job_name: String,
     pub start_time: String,
-    pub status: Option<i64>,
+    pub status: Option<ExecutionStatus>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, serde::Deserialize, serde::Serialize)]
+pub enum ExecutionStatus {
+    Success,
+    Failed,
+    InvalidConfig,
+}
+
+impl From<i64> for ExecutionStatus {
+    fn from(value: i64) -> Self {
+        match value {
+            0 => Self::Success,
+            1 => Self::Failed,
+            2 => Self::InvalidConfig,
+            _ => panic!("Corrupt database"),
+        }
+    }
+}
+
+impl From<ExecutionStatus> for i64 {
+    fn from(value: ExecutionStatus) -> Self {
+        match value {
+            ExecutionStatus::Success => 0,
+            ExecutionStatus::Failed => 1,
+            ExecutionStatus::InvalidConfig => 2,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Deserialize, serde::Serialize)]

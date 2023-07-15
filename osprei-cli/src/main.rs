@@ -101,7 +101,7 @@ async fn main() {
                 let execution: osprei::ExecutionDetails = serde_json::from_str(&body).unwrap();
                 let status = match execution.status {
                     None => "Running",
-                    Some(0) => "Success",
+                    Some(osprei::ExecutionStatus::Success) => "Success",
                     _ => "Failure",
                 };
                 println!("Last execution: {} UTC ({})", execution.start_time, status);

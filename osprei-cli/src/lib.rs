@@ -16,9 +16,10 @@ impl Client {
                 Some(osprei::ExecutionSummary { id, .. }) => {
                     let osprei::ExecutionDetails { status, .. } = self.execution(*id).await;
                     match status {
-                        Some(0) => "Success",
-                        None => "Running",
-                        _ => "Failure",
+                        Some(osprei::ExecutionStatus::Success) => "Success",
+                        Some(osprei::ExecutionStatus::Failed) => "Failed",
+                        Some(osprei::ExecutionStatus::InvalidConfig) => "Invalid config",
+                        None => "Not executed",
                     }
                 }
                 None => "Not executed",

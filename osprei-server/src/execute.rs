@@ -140,14 +140,16 @@ pub async fn write_result(
 ) {
     let any_failed = stage_summaries.iter().any(|output| output.status != 0);
     let status = match any_failed {
-        false => 0,
-        true => 1,
+        false => osprei::ExecutionStatus::Success,
+        true => osprei::ExecutionStatus::Failed,
     };
     store.set_execution_status(execution_id, status).await;
 }
 
 pub async fn write_error(execution_id: i64, store: &dyn crate::persistance::Store) {
-    store.set_execution_status(execution_id, 2).await;
+    store
+        .set_execution_status(execution_id, osprei::ExecutionStatus::InvalidConfig)
+        .await;
 }
 
 pub async fn schedule_all(
