@@ -3,7 +3,9 @@
         {
             "cmd": "cargo",
             "args": [
-                "clippy"
+                "clippy",
+                "--",
+                "-Aclippy::pedantic"
             ],
             "path": ".",
             "env": [

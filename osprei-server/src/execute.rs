@@ -67,7 +67,7 @@ impl<'a> StageExecutor<'a> {
             path,
             env,
         } = stage;
-        let path = joined(&self.working_dir, &path);
+        let path = joined(self.working_dir, &path);
         let env: HashMap<_, _> = env
             .into_iter()
             .map(|EnvironmentDefinition { key, value }| (key, value))
