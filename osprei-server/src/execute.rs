@@ -33,39 +33,60 @@ pub async fn execute_job(
         let definition_path = joined(&execution_dir, &path);
         let job_definition = read_job_definition(definition_path).await?;
         debug!("Read job definition: {:?}", job_definition);
+        let stage_executor = StageExecutor::new(&execution_dir);
         for stage in job_definition.stages {
             debug!("Running stage: {:?}", stage);
-            let Stage {
-                cmd,
-                args,
-                path,
-                env,
-            } = stage;
-            let path = joined(&execution_dir, &path);
-            let env: HashMap<_, _> = env
-                .into_iter()
-                .map(|EnvironmentDefinition { key, value }| (key, value))
-                .collect();
-            let output = tokio::process::Command::new(&cmd)
-                .args(&args)
-                .current_dir(&path)
-                .envs(env)
-                .output()
-                .await
-                .map_err(|err| {
-                    error!("Error occured when spawning suprocess, dumping details.");
-                    error!("Command: {}", cmd);
-                    error!("Arguments: {:?}", args);
-                    error!("Path: {}", path);
-                    ExecutionError::SubProccess(err)
-                })?;
-            output_builder.add(&output).await?;
+            stage_executor.execute(stage, &mut output_builder).await?;
             if !output_builder.last_stage_successful() {
                 break;
             }
         }
     }
     Ok(output_builder.build())
+}
+
+struct StageExecutor<'a> {
+    working_dir: &'a str,
+}
+
+impl<'a> StageExecutor<'a> {
+    fn new(working_dir: &'a str) -> StageExecutor<'a> {
+        StageExecutor { working_dir }
+    }
+
+    async fn execute(
+        &'a self,
+        stage: Stage,
+        output_builder: &mut OutputBuilder,
+    ) -> Result<(), ExecutionError> {
+        debug!("Running stage: {:?}", stage);
+        let Stage {
+            cmd,
+            args,
+            path,
+            env,
+        } = stage;
+        let path = joined(&self.working_dir, &path);
+        let env: HashMap<_, _> = env
+            .into_iter()
+            .map(|EnvironmentDefinition { key, value }| (key, value))
+            .collect();
+        let output = tokio::process::Command::new(&cmd)
+            .args(&args)
+            .current_dir(&path)
+            .envs(env)
+            .output()
+            .await
+            .map_err(|err| {
+                error!("Error occured when spawning suprocess, dumping details.");
+                error!("Command: {}", cmd);
+                error!("Arguments: {:?}", args);
+                error!("Path: {}", path);
+                ExecutionError::SubProccess(err)
+            })?;
+        output_builder.add(&output).await?;
+        Ok(())
+    }
 }
 
 async fn checkout_repo(
