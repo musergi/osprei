@@ -3,7 +3,7 @@ use log::{debug, error, info};
 use osprei::{EnvironmentDefinition, Job, Stage, StageExecutionSummary};
 use std::collections::HashMap;
 
-pub struct JobExecutionOptions {
+pub struct JobDescriptor {
     /// Clone directory for the source repo
     pub execution_dir: String,
     /// Dump directory for this execution output
@@ -14,35 +14,36 @@ pub struct JobExecutionOptions {
     pub path: String,
 }
 
-pub async fn execute_job(
-    JobExecutionOptions {
-        execution_dir,
-        result_dir,
-        source,
-        path,
-    }: JobExecutionOptions,
-) -> Result<Vec<StageExecutionSummary>, ExecutionError> {
-    if tokio::fs::remove_dir_all(&execution_dir).await.is_ok() {
-        info!("Clean up directory: {}", execution_dir);
-    }
-    let output_writer = OutputWriter::new(result_dir).await?;
-    let mut output_builder = OutputBuilder::new(output_writer);
-    checkout_repo(&mut output_builder, &execution_dir, &source).await?;
-    if output_builder.last_stage_successful() {
-        info!("Code checkout complete for: {}", source);
-        let definition_path = joined(&execution_dir, &path);
-        let job_definition = read_job_definition(definition_path).await?;
-        debug!("Read job definition: {:?}", job_definition);
-        let stage_executor = StageExecutor::new(&execution_dir);
-        for stage in job_definition.stages {
-            debug!("Running stage: {:?}", stage);
-            stage_executor.execute(stage, &mut output_builder).await?;
-            if !output_builder.last_stage_successful() {
-                break;
+impl JobDescriptor {
+    pub async fn execute_job(self) -> Result<Vec<StageExecutionSummary>, ExecutionError> {
+        let JobDescriptor {
+            execution_dir,
+            result_dir,
+            source,
+            path,
+        } = self;
+        if tokio::fs::remove_dir_all(&execution_dir).await.is_ok() {
+            info!("Clean up directory: {}", execution_dir);
+        }
+        let output_writer = OutputWriter::new(result_dir).await?;
+        let mut output_builder = OutputBuilder::new(output_writer);
+        checkout_repo(&mut output_builder, &execution_dir, &source).await?;
+        if output_builder.last_stage_successful() {
+            info!("Code checkout complete for: {}", source);
+            let definition_path = joined(&execution_dir, &path);
+            let job_definition = read_job_definition(definition_path).await?;
+            debug!("Read job definition: {:?}", job_definition);
+            let stage_executor = StageExecutor::new(&execution_dir);
+            for stage in job_definition.stages {
+                debug!("Running stage: {:?}", stage);
+                stage_executor.execute(stage, &mut output_builder).await?;
+                if !output_builder.last_stage_successful() {
+                    break;
+                }
             }
         }
+        Ok(output_builder.build())
     }
-    Ok(output_builder.build())
 }
 
 struct StageExecutor<'a> {
@@ -212,13 +213,13 @@ pub async fn schedule_job(
                 loop {
                     interval.tick().await;
                     let execution_id = store.create_execution(id).await;
-                    let options = JobExecutionOptions {
+                    let descriptor = JobDescriptor {
                         execution_dir: path_builder.workspace(&name),
                         result_dir: path_builder.results(&name, execution_id),
                         source: source.clone(),
                         path: path.clone(),
                     };
-                    match execute_job(options).await {
+                    match descriptor.execute_job().await {
                         Ok(outputs) => {
                             write_result(execution_id, &outputs, store.as_ref()).await;
                         }

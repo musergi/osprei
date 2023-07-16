@@ -38,7 +38,7 @@ pub async fn get_job_run(
     let execution_id = store.create_execution(job_id).await;
     let execution_dir = path_builder.workspace(&name);
     let result_dir = path_builder.results(&name, execution_id);
-    let options = execute::JobExecutionOptions {
+    let descriptor = execute::JobDescriptor {
         execution_dir,
         result_dir,
         source,
@@ -47,7 +47,7 @@ pub async fn get_job_run(
     {
         let execution_id = execution_id;
         tokio::spawn(async move {
-            match execute::execute_job(options).await {
+            match descriptor.execute_job().await {
                 Ok(outputs) => {
                     execute::write_result(execution_id, &outputs, store.as_ref()).await;
                 }
