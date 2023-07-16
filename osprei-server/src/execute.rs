@@ -31,14 +31,7 @@ pub async fn execute_job(
     if output_builder.last_stage_successful() {
         info!("Code checkout complete for: {}", source);
         let definition_path = joined(&execution_dir, &path);
-        debug!("Reading job definition from {}", definition_path);
-        let job_definition = tokio::fs::read_to_string(&definition_path)
-            .await
-            .map_err(|err| ExecutionError::MissingDefinition {
-                path: definition_path,
-                err,
-            })?;
-        let job_definition: Job = serde_json::from_str(&job_definition)?;
+        let job_definition = read_job_definition(definition_path).await?;
         debug!("Read job definition: {:?}", job_definition);
         for stage in job_definition.stages {
             debug!("Running stage: {:?}", stage);
@@ -89,6 +82,14 @@ async fn checkout_repo(
         .map_err(ExecutionError::SubProccess)?;
     output_builder.add(&output).await?;
     Ok(())
+}
+
+async fn read_job_definition(path: String) -> Result<Job, ExecutionError> {
+    debug!("Reading job definition from {}", path);
+    let job_definition = tokio::fs::read_to_string(&path)
+        .await
+        .map_err(|err| ExecutionError::MissingDefinition { path, err })?;
+    Ok(serde_json::from_str(&job_definition)?)
 }
 
 fn joined(base: &str, suffix: &str) -> String {
