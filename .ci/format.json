@@ -1,0 +1,16 @@
+{
+    "stages": [
+        {
+            "cmd": "cargo",
+            "args": [
+                "fmt",
+                "--",
+                "--check",
+                "--config",
+                "wrap_comments=true"
+            ],
+            "path": ".",
+            "env": []
+        }
+    ]
+}
