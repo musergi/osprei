@@ -23,6 +23,178 @@ pub trait ScheduleStore {
     async fn get_all_schedules(&self) -> Vec<osprei::Schedule>;
 }
 
+type StoreResult<T> = Result<T, StorageError>;
+
+#[async_trait::async_trait]
+pub trait Storage {
+    /// Lists all valid job identifiers.
+    ///
+    /// # Returns
+    ///
+    /// Returns a `StoreResult` containing a vector of valid job identifiers.
+    /// If the operation is successful, the vector of job identifiers is
+    /// returned. Otherwise, a store error is returned.
+    async fn list_jobs(&self) -> StoreResult<Vec<i64>>;
+
+    /// Stores a job into the database and returns the newly created job ID.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - The name of the job being stored.
+    /// * `source` - The Git repository URL to the source code to test.
+    /// * `path` - The relative path from the root of the repository to the job
+    ///   description.
+    ///
+    /// # Returns
+    ///
+    /// Returns the ID of the newly created job wrapped in a `StoreResult`.
+    /// If the job is successfully stored, its ID is returned.
+    /// Otherwise, a store error is returned.
+    async fn store_job(&self, name: String, source: String, path: String) -> StoreResult<i64>;
+
+    /// Fetches the job pointer from the database.
+    ///
+    /// It is important to note that the job description is not stored in the
+    /// database. Instead, it may be cached and later returned by the
+    /// corresponding method.
+    ///
+    /// # Arguments
+    ///
+    /// * `id` - The ID of the job for which the job pointer is fetched.
+    ///
+    /// # Returns
+    ///
+    /// Returns the job pointer wrapped in a `StoreResult`.
+    /// If the requested ID is valid, the job pointer is returned.
+    /// Otherwise, a user error is returned.
+    async fn fetch_job(&self, id: i64) -> StoreResult<osprei::JobPointer>;
+
+    /// Fetches the job description for a given job ID, if available.
+    ///
+    /// On job registration, no attempt is made to fetch the job description.
+    /// This approach aims to enhance the agility of the registration process.
+    /// The primary goal of this store is to provide job definitions for each
+    /// execution, enabling better traceability of each execution.
+    ///
+    /// # Arguments
+    ///
+    /// * `id` - The ID of the job for which the job description is fetched.
+    ///
+    /// # Returns
+    ///
+    /// Returns the job description wrapped in a `StoreResult`.
+    /// If the job description is available, it is returned.
+    /// Otherwise, a store error is returned.
+    async fn fetch_job_description(&self, id: i64) -> StoreResult<osprei::Job>;
+
+    /// Creates an execution for a given job.
+    ///
+    /// # Arguments
+    ///
+    /// * `job_id` - The ID of the job for which the execution is created.
+    ///
+    /// # Returns
+    ///
+    /// Returns the ID of the newly created execution wrapped in a
+    /// `StoreResult`. If the requested job ID is valid, the execution is
+    /// created and its ID is returned. Otherwise, a user error is returned.
+    async fn create_execution(&self, job_id: i64) -> StoreResult<i64>;
+
+    /// Sets the status of an execution to the specified status.
+    ///
+    /// # Arguments
+    ///
+    /// * `id` - The ID of the execution whose status is being set.
+    /// * `execution_status` - The status to set for the execution.
+    ///
+    /// # Returns
+    ///
+    /// Returns a `StoreResult` indicating the success of the operation.
+    /// If the execution with the specified ID exists, its status is updated to
+    /// the specified status. Otherwise, a user error is returned.
+    async fn set_execution_status(
+        &self,
+        id: i64,
+        execution_status: osprei::ExecutionStatus,
+    ) -> StoreResult<()>;
+
+    /// Fetches the execution with the specified ID.
+    ///
+    /// # Arguments
+    ///
+    /// * `id` - The ID of the execution to fetch.
+    ///
+    /// # Returns
+    ///
+    /// Returns an `osprei::ExecutionDetails` wrapped in a `StoreResult`.
+    /// If the requested ID is valid, the execution details are returned.
+    /// Otherwise, a user error is returned.
+    async fn get_execution(&self, id: i64) -> StoreResult<osprei::ExecutionDetails>;
+
+    /// Fetches the last `limit` executions of the job with the specified ID.
+    ///
+    /// # Arguments
+    ///
+    /// * `job_id` - The ID of the job for which to fetch the last executions.
+    /// * `limit` - The maximum number of executions to fetch.
+    ///
+    /// # Returns
+    ///
+    /// Returns a `StoreResult` containing a vector of `ExecutionSummary` for
+    /// the last executions. If the job ID is invalid or the limit is zero,
+    /// negative, or too large, a user error is returned. Otherwise, the
+    /// vector of execution summaries is returned.
+    async fn last_executions(
+        &self,
+        job_id: i64,
+        limit: usize,
+    ) -> StoreResult<Vec<osprei::ExecutionSummary>>;
+
+    /// Creates a daily schedule for the requested job ID at the specified hour
+    /// and minute.
+    ///
+    /// # Arguments
+    ///
+    /// * `job_id` - The ID of the job for which to create a daily schedule.
+    /// * `request` - The schedule request containing the desired hour and
+    ///   minute.
+    ///
+    /// # Returns
+    ///
+    /// Returns a `StoreResult` indicating the success of the operation.
+    /// If the job ID is invalid, a `StorageError::UserError` is returned.
+    /// On success, the ID of the created schedule is returned.
+    async fn create_daily(&self, job_id: i64, request: osprei::ScheduleRequest)
+        -> StoreResult<i64>;
+
+    /// Gets all the schedules for a particular job ID.
+    ///
+    /// # Arguments
+    ///
+    /// * `job_id` - The ID of the job for which to get the schedules.
+    ///
+    /// # Returns
+    ///
+    /// Returns a `StoreResult` containing a vector of schedules.
+    /// If the job ID is invalid, a `StorageError::UserError` is returned.
+    /// Otherwise, the vector of schedules is returned.
+    async fn get_schedules(&self, job_id: i64) -> StoreResult<Vec<osprei::Schedule>>;
+
+    /// Gets all the schedules for all jobs.
+    ///
+    /// # Returns
+    ///
+    /// Returns a `StoreResult` containing a vector of schedules.
+    /// If the operation encounters an error, a store error is returned.
+    /// Otherwise, the vector of schedules is returned.
+    async fn get_all_schedules(&self) -> StoreResult<Vec<osprei::Schedule>>;
+}
+
+pub enum StorageError {
+    UserError(String),
+    InternalError(String),
+}
+
 pub trait Store: JobStore + ExecutionStore + ScheduleStore + Send + Sync + 'static {}
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
