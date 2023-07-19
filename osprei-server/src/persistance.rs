@@ -190,6 +190,7 @@ pub trait Storage {
     async fn get_all_schedules(&self) -> StoreResult<Vec<osprei::Schedule>>;
 }
 
+#[derive(Debug)]
 pub enum StorageError {
     UserError(String),
     InternalError(String),
@@ -237,6 +238,42 @@ pub fn with(
 #[cfg(test)]
 mod tests {
     use osprei::ScheduleRequest;
+
+    use crate::persistance::StorageError;
+
+    pub async fn listed_jobs_increase_on_job_added<T: super::Storage>(storage: T) {
+        let initial_job_ids = storage.list_jobs().await.unwrap();
+
+        let name = String::from("test_job_name");
+        let source = String::from("https://github.com/musergi/osprei.git");
+        let path = String::from(".ci/test.json");
+        let _ = storage.store_job(name.clone(), source, path).await.unwrap();
+
+        let new_job_count = storage.list_jobs().await.unwrap().len();
+        assert_eq!(new_job_count, initial_job_ids.len() + 1);
+    }
+
+    pub async fn get_back_job_when_using_retruned_id<T: super::Storage>(storage: T) {
+        let name = String::from("test_job_name");
+        let source = String::from("https://github.com/musergi/osprei.git");
+        let path = String::from(".ci/test.json");
+        let inserted_id = storage
+            .store_job(name.clone(), source.clone(), path.clone())
+            .await
+            .unwrap();
+
+        let job = storage.fetch_job(inserted_id).await.unwrap();
+
+        assert_eq!(job.name, name);
+        assert_eq!(job.source, source);
+        assert_eq!(job.path, path);
+    }
+
+    pub async fn using_invalid_id_returs_user_error<T: super::Storage>(storage: T) {
+        assert!(storage.list_jobs().await.unwrap().is_empty());
+        let res = storage.fetch_job(0).await;
+        assert!(matches!(res, Err(StorageError::UserError(_))));
+    }
 
     pub async fn test_job_store<T: super::JobStore>(store: T) {
         let job_ids = store.list_jobs().await;
