@@ -236,12 +236,12 @@ pub fn with(
 }
 
 #[cfg(test)]
-mod tests {
+mod test {
     use osprei::ScheduleRequest;
 
-    use crate::persistance::StorageError;
+    use super::StorageError;
 
-    pub async fn listed_jobs_increase_on_job_added<T: super::Storage>(storage: T) {
+    pub async fn listed_jobs_increase_on_job_added(storage: impl super::Storage) {
         let initial_job_ids = storage.list_jobs().await.unwrap();
 
         let name = String::from("test_job_name");
@@ -253,7 +253,7 @@ mod tests {
         assert_eq!(new_job_count, initial_job_ids.len() + 1);
     }
 
-    pub async fn get_back_job_when_using_retruned_id<T: super::Storage>(storage: T) {
+    pub async fn get_back_job_when_using_retruned_id(storage: impl super::Storage) {
         let name = String::from("test_job_name");
         let source = String::from("https://github.com/musergi/osprei.git");
         let path = String::from(".ci/test.json");
@@ -269,10 +269,59 @@ mod tests {
         assert_eq!(job.path, path);
     }
 
-    pub async fn using_invalid_id_returs_user_error<T: super::Storage>(storage: T) {
+    pub async fn using_invalid_id_returs_user_error(storage: impl super::Storage) {
         assert!(storage.list_jobs().await.unwrap().is_empty());
         let res = storage.fetch_job(0).await;
         assert!(matches!(res, Err(StorageError::UserError(_))));
+    }
+
+    pub async fn created_execution_added_to_job(storage: impl super::Storage) {
+        let name = String::from("test_job_name");
+        let source = String::from("https://github.com/musergi/osprei.git");
+        let path = String::from(".ci/test.json");
+        let job_id = storage.store_job(name, source, path).await.unwrap();
+        let execution_id = storage.create_execution(job_id).await.unwrap();
+        let executions = storage.last_executions(job_id, 10).await.unwrap();
+        assert!(executions
+            .into_iter()
+            .find(|summary| summary.id == execution_id)
+            .is_some())
+    }
+
+    pub async fn inserted_executions_dont_have_status(storage: impl super::Storage) {
+        let name = String::from("test_job_name");
+        let source = String::from("https://github.com/musergi/osprei.git");
+        let path = String::from(".ci/test.json");
+        let job_id = storage.store_job(name, source, path).await.unwrap();
+        let execution_id = storage.create_execution(job_id).await.unwrap();
+        let execution = storage.get_execution(execution_id).await.unwrap();
+        assert!(execution.status.is_none())
+    }
+
+    pub async fn status_properly_saved(storage: impl super::Storage) {
+        let name = String::from("test_job_name");
+        let source = String::from("https://github.com/musergi/osprei.git");
+        let path = String::from(".ci/test.json");
+        let job_id = storage.store_job(name, source, path).await.unwrap();
+        let execution_id = storage.create_execution(job_id).await.unwrap();
+        storage
+            .set_execution_status(execution_id, osprei::ExecutionStatus::Failed)
+            .await
+            .unwrap();
+        let execution = storage.get_execution(execution_id).await.unwrap();
+        assert!(matches!(
+            execution.status,
+            Some(osprei::ExecutionStatus::Failed)
+        ));
+        storage
+            .set_execution_status(execution_id, osprei::ExecutionStatus::Success)
+            .await
+            .unwrap();
+        let execution = storage.get_execution(execution_id).await.unwrap();
+        assert!(matches!(
+            execution.status,
+            Some(osprei::ExecutionStatus::Success)
+        ));
     }
 
     pub async fn test_job_store<T: super::JobStore>(store: T) {

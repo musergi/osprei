@@ -169,7 +169,7 @@ impl Store for MemoryStore {}
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::persistance::tests::{test_execution_store, test_job_store, test_schedule_store};
+    use crate::persistance::test::{test_execution_store, test_job_store, test_schedule_store};
 
     #[tokio::test]
     async fn test_memory_job_store() {
