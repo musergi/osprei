@@ -1,4 +1,4 @@
-use log::error;
+use log::{error, warn};
 
 use clap::Parser;
 use osprei_server::config::Config;
@@ -58,5 +58,7 @@ fn cors() -> warp::cors::Builder {
 }
 
 async fn build_workspace(workspace_dir: &str) {
-    tokio::fs::create_dir_all(workspace_dir).await.unwrap();
+    if let Err(err) = tokio::fs::create_dir_all(workspace_dir).await {
+        warn!("could not build workspace: {}", err);
+    }
 }

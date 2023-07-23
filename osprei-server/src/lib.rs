@@ -44,17 +44,17 @@ impl PathBuilder {
 fn build_workspace_path(data_path: &str) -> String {
     let mut buf = std::path::PathBuf::from(data_path);
     buf.push("workspaces");
-    buf.to_str().unwrap().to_string()
+    buf.to_string_lossy().to_string()
 }
 
 fn build_database_path(data_path: &str) -> String {
     let mut buf = std::path::PathBuf::from(data_path);
     buf.push("data.sqlite");
-    buf.to_str().unwrap().to_string()
+    buf.to_string_lossy().to_string()
 }
 
 fn build_result_path(data_path: &str) -> String {
     let mut buf = std::path::PathBuf::from(data_path);
     buf.push("results");
-    buf.to_str().unwrap().to_string()
+    buf.to_string_lossy().to_string()
 }
