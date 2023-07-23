@@ -284,8 +284,7 @@ mod test {
         let executions = storage.last_executions(job_id, 10).await.unwrap();
         assert!(executions
             .into_iter()
-            .find(|summary| summary.id == execution_id)
-            .is_some())
+            .any(|summary| summary.id == execution_id))
     }
 
     pub async fn inserted_executions_dont_have_status(storage: impl super::Storage) {
