@@ -26,7 +26,7 @@ pub trait ScheduleStore {
 type StoreResult<T> = Result<T, StorageError>;
 
 #[async_trait::async_trait]
-pub trait Storage {
+pub trait Storage: Send + Sync + 'static {
     /// Lists all valid job identifiers.
     ///
     /// # Returns
@@ -221,7 +221,7 @@ pub enum Persistances {
 }
 
 impl Persistances {
-    pub fn boxed(&self) -> Box<dyn Store> {
+    pub fn boxed(&self) -> Box<dyn Storage> {
         match self {
             Persistances::Memory(p) => Box::new(p.clone()),
             Persistances::Sqlite(p) => Box::new(p.clone()),
@@ -231,7 +231,7 @@ impl Persistances {
 
 pub fn with(
     persistances: Persistances,
-) -> impl Filter<Extract = (Box<dyn Store>,), Error = std::convert::Infallible> + Clone {
+) -> impl Filter<Extract = (Box<dyn Storage>,), Error = std::convert::Infallible> + Clone {
     warp::any().map(move || persistances.clone().boxed())
 }
 

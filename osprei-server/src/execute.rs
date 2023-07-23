@@ -159,34 +159,38 @@ impl OutputBuilder {
 pub async fn write_result(
     execution_id: i64,
     stage_summaries: &[StageExecutionSummary],
-    store: &dyn crate::persistance::Store,
+    store: &dyn crate::persistance::Storage,
 ) {
     let any_failed = stage_summaries.iter().any(|output| output.status != 0);
     let status = match any_failed {
         false => osprei::ExecutionStatus::Success,
         true => osprei::ExecutionStatus::Failed,
     };
-    store.set_execution_status(execution_id, status).await;
+    store
+        .set_execution_status(execution_id, status)
+        .await
+        .unwrap();
 }
 
-pub async fn write_error(execution_id: i64, store: &dyn crate::persistance::Store) {
+pub async fn write_error(execution_id: i64, store: &dyn crate::persistance::Storage) {
     store
         .set_execution_status(execution_id, osprei::ExecutionStatus::InvalidConfig)
-        .await;
+        .await
+        .unwrap();
 }
 
 pub async fn schedule_all(
     persistance: crate::persistance::Persistances,
     path_builder: crate::PathBuilder,
 ) {
-    for schedule in persistance.boxed().get_all_schedules().await {
+    for schedule in persistance.boxed().get_all_schedules().await.unwrap() {
         let osprei::Schedule {
             job_id,
             hour,
             minute,
             ..
         } = schedule;
-        let job = persistance.boxed().fetch_job(job_id).await;
+        let job = persistance.boxed().fetch_job(job_id).await.unwrap();
         debug!("Scheduling {} for {}h{}", job.name, hour, minute);
         schedule_job(job, hour, minute, path_builder.clone(), persistance.boxed()).await;
     }
@@ -197,7 +201,7 @@ pub async fn schedule_job(
     hour: u8,
     minute: u8,
     path_builder: crate::PathBuilder,
-    store: Box<dyn crate::persistance::Store>,
+    store: Box<dyn crate::persistance::Storage>,
 ) {
     let osprei::JobPointer {
         id,
@@ -212,7 +216,7 @@ pub async fn schedule_job(
                 debug!("Created loop to run {}", name);
                 loop {
                     interval.tick().await;
-                    let execution_id = store.create_execution(id).await;
+                    let execution_id = store.create_execution(id).await.unwrap();
                     let descriptor = JobDescriptor {
                         execution_dir: path_builder.workspace(&name),
                         result_dir: path_builder.results(&name, execution_id),
