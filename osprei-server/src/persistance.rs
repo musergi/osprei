@@ -1,3 +1,5 @@
+use std::{error::Error, fmt::Display};
+
 use warp::Filter;
 
 type StoreResult<T> = Result<T, StorageError>;
@@ -172,6 +174,17 @@ pub enum StorageError {
     UserError(String),
     InternalError(String),
 }
+
+impl Display for StorageError {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            StorageError::UserError(err) => write!(f, "user error: {}", err),
+            StorageError::InternalError(_) => write!(f, "internal error"),
+        }
+    }
+}
+
+impl Error for StorageError {}
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 #[serde(tag = "type")]

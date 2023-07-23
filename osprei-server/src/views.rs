@@ -91,9 +91,39 @@ pub async fn post_job_schedule(
     path_builder: PathBuilder,
     store: Box<dyn Storage>,
 ) -> Result<impl warp::Reply, Infallible> {
-    let id = store.create_daily(job_id, request.clone()).await.unwrap();
-    let job = store.fetch_job(job_id).await.unwrap();
-    let osprei::ScheduleRequest { hour, minute } = request;
-    execute::schedule_job(job, hour, minute, path_builder, store).await;
-    Ok(warp::reply::json(&id))
+    match store.create_daily(job_id, request.clone()).await {
+        Ok(id) => {
+            match store.fetch_job(job_id).await {
+                Ok(job) => {
+                    let osprei::ScheduleRequest { hour, minute } = request;
+                    execute::schedule_job(job, hour, minute, path_builder, store).await;
+                }
+                Err(err) => {
+                    error!("failed to schedule job not found: {}", err);
+                }
+            }
+            Ok(warp::reply::with_status(
+                warp::reply::json(&id),
+                warp::http::StatusCode::OK,
+            ))
+        }
+        Err(err) => {
+            let message = err.to_string();
+            Ok(warp::reply::with_status(
+                warp::reply::json(&ApiError::new(message)),
+                warp::http::StatusCode::NOT_FOUND,
+            ))
+        }
+    }
+}
+
+#[derive(Debug, serde::Serialize)]
+pub struct ApiError {
+    message: String,
+}
+
+impl ApiError {
+    fn new(message: String) -> Self {
+        Self { message }
+    }
 }
