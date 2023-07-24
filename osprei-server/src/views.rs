@@ -81,8 +81,14 @@ pub async fn get_job_schedule(
     job_id: i64,
     store: Box<dyn Storage>,
 ) -> Result<impl warp::Reply, Infallible> {
-    let schedules = store.get_schedules(job_id).await.unwrap();
-    Ok(warp::reply::json(&schedules))
+    let (reply, status) = match store.get_schedules(job_id).await {
+        Ok(schedules) => (warp::reply::json(&schedules), warp::http::StatusCode::OK),
+        Err(_) => (
+            warp::reply::json(&ApiError::new(String::from("Internal error"))),
+            warp::http::StatusCode::INTERNAL_SERVER_ERROR,
+        ),
+    };
+    Ok(warp::reply::with_status(reply, status))
 }
 
 pub async fn post_job_schedule(
