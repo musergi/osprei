@@ -91,7 +91,7 @@ pub async fn post_job_schedule(
     path_builder: PathBuilder,
     store: Box<dyn Storage>,
 ) -> Result<impl warp::Reply, Infallible> {
-    match store.create_daily(job_id, request.clone()).await {
+    let (reply, status) = match store.create_daily(job_id, request.clone()).await {
         Ok(id) => {
             match store.fetch_job(job_id).await {
                 Ok(job) => {
@@ -99,22 +99,20 @@ pub async fn post_job_schedule(
                     execute::schedule_job(job, hour, minute, path_builder, store).await;
                 }
                 Err(err) => {
-                    error!("failed to schedule job not found: {}", err);
+                    error!("failed to schedule: job not found: {}", err);
                 }
             }
-            Ok(warp::reply::with_status(
-                warp::reply::json(&id),
-                warp::http::StatusCode::OK,
-            ))
+            (warp::reply::json(&id), warp::http::StatusCode::OK)
         }
         Err(err) => {
             let message = err.to_string();
-            Ok(warp::reply::with_status(
+            (
                 warp::reply::json(&ApiError::new(message)),
                 warp::http::StatusCode::NOT_FOUND,
-            ))
+            )
         }
-    }
+    };
+    Ok(warp::reply::with_status(reply, status))
 }
 
 #[derive(Debug, serde::Serialize)]
