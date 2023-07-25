@@ -10,16 +10,16 @@ use crate::{
 };
 
 pub async fn get_jobs(job_store: Box<dyn Storage>) -> Result<impl warp::Reply, Infallible> {
-    let jobs = job_store.list_jobs().await.unwrap();
-    Ok(warp::reply::json(&jobs))
+    let jobs = job_store.list_jobs().await;
+    reply(jobs)
 }
 
 pub async fn get_job(
     job_id: i64,
     job_store: Box<dyn Storage>,
 ) -> Result<impl warp::Reply, Infallible> {
-    let job_ptr = job_store.fetch_job(job_id).await.unwrap();
-    Ok(warp::reply::json(&job_ptr))
+    let job_ptr = job_store.fetch_job(job_id).await;
+    reply(job_ptr)
 }
 
 pub async fn post_job(
@@ -27,8 +27,8 @@ pub async fn post_job(
     job_store: Box<dyn Storage>,
 ) -> Result<impl warp::Reply, Infallible> {
     let JobCreationRequest { name, source, path } = request;
-    let job_id = job_store.store_job(name, source, path).await.unwrap();
-    Ok(warp::reply::json(&job_id))
+    let job_id = job_store.store_job(name, source, path).await;
+    reply(job_id)
 }
 
 pub async fn get_job_run(
@@ -36,10 +36,19 @@ pub async fn get_job_run(
     path_builder: PathBuilder,
     store: Box<dyn Storage>,
 ) -> Result<impl warp::Reply, Infallible> {
+    let execution_id = run_job(job_id, path_builder, store).await;
+    reply(execution_id)
+}
+
+async fn run_job(
+    job_id: i64,
+    path_builder: PathBuilder,
+    store: Box<dyn Storage>,
+) -> Result<impl serde::Serialize, StorageError> {
     let JobPointer {
         name, source, path, ..
-    } = store.fetch_job(job_id).await.unwrap();
-    let execution_id = store.create_execution(job_id).await.unwrap();
+    } = store.fetch_job(job_id).await?;
+    let execution_id = store.create_execution(job_id).await?;
     let execution_dir = path_builder.workspace(&name);
     let result_dir = path_builder.results(&name, execution_id);
     let descriptor = execute::JobDescriptor {
@@ -62,7 +71,7 @@ pub async fn get_job_run(
             }
         });
     }
-    Ok(warp::reply::json(&execution_id))
+    Ok(execution_id)
 }
 
 pub async fn get_job_executions(
@@ -142,11 +151,5 @@ impl From<StorageError> for ApiError {
             StorageError::InternalError(_) => String::from("Internal error"),
         };
         ApiError { message }
-    }
-}
-
-impl ApiError {
-    fn new(message: String) -> Self {
-        Self { message }
     }
 }
