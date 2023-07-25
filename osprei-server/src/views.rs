@@ -3,7 +3,11 @@ use std::convert::Infallible;
 use log::error;
 use osprei::{JobCreationRequest, JobPointer};
 
-use crate::{execute, persistance::Storage, PathBuilder};
+use crate::{
+    execute,
+    persistance::{Storage, StorageError},
+    PathBuilder,
+};
 
 pub async fn get_jobs(job_store: Box<dyn Storage>) -> Result<impl warp::Reply, Infallible> {
     let jobs = job_store.list_jobs().await.unwrap();
@@ -65,30 +69,24 @@ pub async fn get_job_executions(
     job_id: i64,
     store: Box<dyn Storage>,
 ) -> Result<impl warp::Reply, Infallible> {
-    let executions = store.last_executions(job_id, 10).await.unwrap();
-    Ok(warp::reply::json(&executions))
+    let executions = store.last_executions(job_id, 10).await;
+    reply(executions)
 }
 
 pub async fn get_execution(
     execution_id: i64,
     store: Box<dyn Storage>,
 ) -> Result<impl warp::Reply, Infallible> {
-    let execution = store.get_execution(execution_id).await.unwrap();
-    Ok(warp::reply::json(&execution))
+    let execution = store.get_execution(execution_id).await;
+    reply(execution)
 }
 
 pub async fn get_job_schedule(
     job_id: i64,
     store: Box<dyn Storage>,
 ) -> Result<impl warp::Reply, Infallible> {
-    let (reply, status) = match store.get_schedules(job_id).await {
-        Ok(schedules) => (warp::reply::json(&schedules), warp::http::StatusCode::OK),
-        Err(_) => (
-            warp::reply::json(&ApiError::new(String::from("Internal error"))),
-            warp::http::StatusCode::INTERNAL_SERVER_ERROR,
-        ),
-    };
-    Ok(warp::reply::with_status(reply, status))
+    let schedules = store.get_schedules(job_id).await;
+    reply(schedules)
 }
 
 pub async fn post_job_schedule(
@@ -97,7 +95,7 @@ pub async fn post_job_schedule(
     path_builder: PathBuilder,
     store: Box<dyn Storage>,
 ) -> Result<impl warp::Reply, Infallible> {
-    let (reply, status) = match store.create_daily(job_id, request.clone()).await {
+    let id = match store.create_daily(job_id, request.clone()).await {
         Ok(id) => {
             match store.fetch_job(job_id).await {
                 Ok(job) => {
@@ -108,14 +106,25 @@ pub async fn post_job_schedule(
                     error!("failed to schedule: job not found: {}", err);
                 }
             }
-            (warp::reply::json(&id), warp::http::StatusCode::OK)
+            Ok(id)
         }
+        Err(err) => Err(err),
+    };
+    reply(id)
+}
+
+fn reply(
+    reply: Result<impl serde::Serialize, StorageError>,
+) -> Result<impl warp::Reply, Infallible> {
+    let (reply, status) = match reply {
+        Ok(reply) => (warp::reply::json(&reply), warp::http::StatusCode::OK),
         Err(err) => {
-            let message = err.to_string();
-            (
-                warp::reply::json(&ApiError::new(message)),
-                warp::http::StatusCode::NOT_FOUND,
-            )
+            let status = match err {
+                StorageError::UserError(_) => warp::http::StatusCode::NOT_FOUND,
+                StorageError::InternalError(_) => warp::http::StatusCode::INTERNAL_SERVER_ERROR,
+            };
+            let message: ApiError = err.into();
+            (warp::reply::json(&message), status)
         }
     };
     Ok(warp::reply::with_status(reply, status))
@@ -124,6 +133,16 @@ pub async fn post_job_schedule(
 #[derive(Debug, serde::Serialize)]
 pub struct ApiError {
     message: String,
+}
+
+impl From<StorageError> for ApiError {
+    fn from(value: StorageError) -> Self {
+        let message = match value {
+            StorageError::UserError(err) => err.to_string(),
+            StorageError::InternalError(_) => String::from("Internal error"),
+        };
+        ApiError { message }
+    }
 }
 
 impl ApiError {
