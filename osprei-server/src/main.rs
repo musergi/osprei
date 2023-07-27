@@ -27,16 +27,20 @@ async fn main() {
             persistance,
         }) => {
             let path_builder = osprei_server::PathBuilder::new(data_path);
-            let persistance = persistance::build(persistance).await;
-            build_workspace(path_builder.workspaces()).await;
-            execute::schedule_all(persistance.clone(), path_builder.clone()).await;
-            warp::serve(
-                warp::any()
-                    .and(routes(path_builder, persistance))
-                    .with(cors()),
-            )
-            .run(address)
-            .await;
+            match persistance::build(persistance).await {
+                Ok(persistance) => {
+                    build_workspace(path_builder.workspaces()).await;
+                    execute::schedule_all(persistance.clone(), path_builder.clone()).await;
+                    warp::serve(
+                        warp::any()
+                            .and(routes(path_builder, persistance))
+                            .with(cors()),
+                    )
+                    .run(address)
+                    .await;
+                }
+                Err(err) => error!("Could not initialize persistance mechanism: {}", err),
+            }
         }
         Err(err) => error!("Config error: {}", err),
     };

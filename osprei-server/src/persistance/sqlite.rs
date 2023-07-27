@@ -10,7 +10,7 @@ pub struct DatabasePersistance {
 }
 
 impl DatabasePersistance {
-    pub async fn new(database_path: &str) -> DatabasePersistance {
+    pub async fn new(database_path: &str) -> StoreResult<DatabasePersistance> {
         let url = database_path.to_string() + "?mode=rwc";
         let pool = match sqlx::sqlite::SqlitePool::connect(&url).await {
             Ok(v) => v,
@@ -20,20 +20,17 @@ impl DatabasePersistance {
                 panic!("DB connection error");
             }
         };
-        let mut conn = pool.acquire().await.unwrap();
+        let mut conn = pool.acquire().await?;
         sqlx::query("CREATE TABLE IF NOT EXISTS jobs (id INTEGER PRIMARY KEY, name TEXT, source TEXT, path TEXT)")
             .execute(&mut conn)
-            .await
-            .unwrap();
+            .await?;
         sqlx::query("CREATE TABLE IF NOT EXISTS executions (id INTEGER PRIMARY KEY, job_id INTEGER, start_time TIMESTAMP, status INTEGER, FOREIGN KEY (job_id) REFERENCES jobs(id))")
             .execute(&mut conn)
-            .await
-            .unwrap();
+            .await?;
         sqlx::query("CREATE TABLE IF NOT EXISTS schedules (id INTEGER PRIMARY KEY, job_id INTEGER, hour INTEGER, minute INTEGER, FOREIGN KEY (job_id) REFERENCES jobs(id))")
             .execute(&mut conn)
-            .await
-            .unwrap();
-        DatabasePersistance { pool }
+            .await?;
+        Ok(DatabasePersistance { pool })
     }
 }
 
@@ -99,7 +96,7 @@ impl Storage for DatabasePersistance {
         execution_status: osprei::ExecutionStatus,
     ) -> StoreResult<()> {
         let value: i64 = execution_status.into();
-        let mut conn = self.pool.acquire().await.unwrap();
+        let mut conn = self.pool.acquire().await?;
         sqlx::query("UPDATE executions SET status = $2 WHERE id = $1;")
             .bind(id)
             .bind(value)
@@ -109,7 +106,7 @@ impl Storage for DatabasePersistance {
     }
 
     async fn get_execution(&self, id: i64) -> StoreResult<osprei::ExecutionDetails> {
-        let mut conn = self.pool.acquire().await.unwrap();
+        let mut conn = self.pool.acquire().await?;
         sqlx::query("SELECT executions.id, jobs.name, start_time, status FROM executions JOIN jobs ON jobs.id = executions.job_id WHERE executions.id = $1")
             .bind(id)
             .fetch_optional(&mut conn)
@@ -131,7 +128,7 @@ impl Storage for DatabasePersistance {
         job_id: i64,
         limit: usize,
     ) -> StoreResult<Vec<osprei::ExecutionSummary>> {
-        let mut conn = self.pool.acquire().await.unwrap();
+        let mut conn = self.pool.acquire().await?;
         let executions = sqlx::query("SELECT id, start_time FROM executions WHERE job_id = $1 ORDER BY start_time DESC LIMIT $2")
             .bind(job_id)
             .bind(limit as i64)
@@ -152,7 +149,7 @@ impl Storage for DatabasePersistance {
         request: osprei::ScheduleRequest,
     ) -> StoreResult<i64> {
         let osprei::ScheduleRequest { hour, minute } = request;
-        let mut conn = self.pool.acquire().await.unwrap();
+        let mut conn = self.pool.acquire().await?;
         let id = sqlx::query("INSERT INTO schedules (job_id, hour, minute) VALUES ($1, $2, $3)")
             .bind(job_id)
             .bind(hour)
@@ -164,7 +161,7 @@ impl Storage for DatabasePersistance {
     }
 
     async fn get_schedules(&self, job_id: i64) -> StoreResult<Vec<osprei::Schedule>> {
-        let mut conn = self.pool.acquire().await.unwrap();
+        let mut conn = self.pool.acquire().await?;
         let schedules =
             sqlx::query("SELECT id, job_id, hour, minute FROM schedules WHERE job_id = $1")
                 .bind(job_id)
@@ -182,11 +179,10 @@ impl Storage for DatabasePersistance {
     }
 
     async fn get_all_schedules(&self) -> StoreResult<Vec<osprei::Schedule>> {
-        let mut conn = self.pool.acquire().await.unwrap();
+        let mut conn = self.pool.acquire().await?;
         let schedules = sqlx::query("SELECT id, job_id, hour, minute FROM schedules")
             .fetch_all(&mut conn)
-            .await
-            .unwrap()
+            .await?
             .into_iter()
             .map(|row| osprei::Schedule {
                 schedule_id: row.get(0),

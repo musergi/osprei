@@ -1,5 +1,5 @@
 use chrono::DurationRound;
-use log::{debug, error, info};
+use log::{debug, error, info, warn};
 use osprei::{EnvironmentDefinition, Job, Stage, StageExecutionSummary};
 use std::collections::HashMap;
 
@@ -166,33 +166,56 @@ pub async fn write_result(
         false => osprei::ExecutionStatus::Success,
         true => osprei::ExecutionStatus::Failed,
     };
-    store
-        .set_execution_status(execution_id, status)
-        .await
-        .unwrap();
+    let result = store.set_execution_status(execution_id, status).await;
+    if let Err(err) = result {
+        warn!(
+            "Failed to store status for execution ({}): {}",
+            execution_id, err
+        );
+    }
 }
 
 pub async fn write_error(execution_id: i64, store: &dyn crate::persistance::Storage) {
-    store
+    let result = store
         .set_execution_status(execution_id, osprei::ExecutionStatus::InvalidConfig)
-        .await
-        .unwrap();
+        .await;
+    if let Err(err) = result {
+        warn!(
+            "Failed to store error for execution ({}): {}",
+            execution_id, err
+        );
+    }
 }
 
 pub async fn schedule_all(
     persistance: crate::persistance::Persistances,
     path_builder: crate::PathBuilder,
 ) {
-    for schedule in persistance.boxed().get_all_schedules().await.unwrap() {
-        let osprei::Schedule {
-            job_id,
-            hour,
-            minute,
-            ..
-        } = schedule;
-        let job = persistance.boxed().fetch_job(job_id).await.unwrap();
-        debug!("Scheduling {} for {}h{}", job.name, hour, minute);
-        schedule_job(job, hour, minute, path_builder.clone(), persistance.boxed()).await;
+    match persistance.boxed().get_all_schedules().await {
+        Ok(schedules) => {
+            for schedule in schedules {
+                let osprei::Schedule {
+                    job_id,
+                    hour,
+                    minute,
+                    ..
+                } = schedule;
+                match persistance.boxed().fetch_job(job_id).await {
+                    Ok(job) => {
+                        debug!("Scheduling {} for {}h{}", job.name, hour, minute);
+                        schedule_job(job, hour, minute, path_builder.clone(), persistance.boxed())
+                            .await;
+                    }
+                    Err(err) => {
+                        error!("Failed to schedule {}: {}", job_id, err);
+                    }
+                }
+            }
+        }
+        Err(err) => {
+            error!("Failed to fetch schedules: {}", err);
+            error!("No jobs will be scheduled")
+        }
     }
 }
 
@@ -216,18 +239,24 @@ pub async fn schedule_job(
                 debug!("Created loop to run {}", name);
                 loop {
                     interval.tick().await;
-                    let execution_id = store.create_execution(id).await.unwrap();
-                    let descriptor = JobDescriptor {
-                        execution_dir: path_builder.workspace(&name),
-                        result_dir: path_builder.results(&name, execution_id),
-                        source: source.clone(),
-                        path: path.clone(),
-                    };
-                    match descriptor.execute_job().await {
-                        Ok(outputs) => {
-                            write_result(execution_id, &outputs, store.as_ref()).await;
+                    match store.create_execution(id).await {
+                        Ok(execution_id) => {
+                            let descriptor = JobDescriptor {
+                                execution_dir: path_builder.workspace(&name),
+                                result_dir: path_builder.results(&name, execution_id),
+                                source: source.clone(),
+                                path: path.clone(),
+                            };
+                            match descriptor.execute_job().await {
+                                Ok(outputs) => {
+                                    write_result(execution_id, &outputs, store.as_ref()).await;
+                                }
+                                Err(err) => {
+                                    error!("An error occurred during job executions: {}", err)
+                                }
+                            }
                         }
-                        Err(err) => error!("An error occurred during job executions: {}", err),
+                        Err(err) => error!("Error creating execution: {}", err),
                     }
                 }
             }

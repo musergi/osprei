@@ -30,7 +30,7 @@ struct Execution {
 
 fn timestamp_str(secs_since_epoch: u64) -> String {
     let datetime = DateTime::<Utc>::from_utc(
-        NaiveDateTime::from_timestamp_opt(secs_since_epoch as i64, 0).unwrap(),
+        NaiveDateTime::from_timestamp_opt(secs_since_epoch as i64, 0).expect("Negative timestamp"),
         Utc,
     );
     datetime.format("%Y-%m-%d %H:%M:%S").to_string()
@@ -112,7 +112,10 @@ impl Storage for MemoryStore {
             job_id,
             start_time,
             status,
-        } = data.executions.get(&id).unwrap();
+        } = data
+            .executions
+            .get(&id)
+            .ok_or_else(|| StorageError::UserError(String::from("Invalid job id")))?;
         let JobPointer { name, .. } = data
             .jobs
             .get(job_id)

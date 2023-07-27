@@ -193,13 +193,13 @@ pub enum PersistanceConfig {
     Sqlite { path: String },
 }
 
-pub async fn build(config: PersistanceConfig) -> Persistances {
-    match config {
+pub async fn build(config: PersistanceConfig) -> StoreResult<Persistances> {
+    Ok(match config {
         PersistanceConfig::Memory => Persistances::Memory(memory::MemoryStore::default()),
         PersistanceConfig::Sqlite { path } => {
-            Persistances::Sqlite(sqlite::DatabasePersistance::new(&path).await)
+            Persistances::Sqlite(sqlite::DatabasePersistance::new(&path).await?)
         }
-    }
+    })
 }
 
 #[derive(Clone)]

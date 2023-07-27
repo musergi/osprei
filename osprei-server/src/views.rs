@@ -147,7 +147,7 @@ pub struct ApiError {
 impl From<StorageError> for ApiError {
     fn from(value: StorageError) -> Self {
         let message = match value {
-            StorageError::UserError(err) => err.to_string(),
+            StorageError::UserError(err) => err,
             StorageError::InternalError(_) => String::from("Internal error"),
         };
         ApiError { message }
