@@ -208,37 +208,37 @@ mod test {
 
     #[tokio::test]
     async fn listed_jobs_increase_on_job_added() {
-        let store = DatabasePersistance::new(":memory:").await;
+        let store = DatabasePersistance::new(":memory:").await.unwrap();
         test::listed_jobs_increase_on_job_added(store).await;
     }
 
     #[tokio::test]
     async fn get_back_job_when_using_retruned_id() {
-        let store = DatabasePersistance::new(":memory:").await;
+        let store = DatabasePersistance::new(":memory:").await.unwrap();
         test::get_back_job_when_using_retruned_id(store).await;
     }
 
     #[tokio::test]
     async fn using_invalid_id_returs_user_error() {
-        let store = DatabasePersistance::new(":memory:").await;
+        let store = DatabasePersistance::new(":memory:").await.unwrap();
         test::using_invalid_id_returs_user_error(store).await;
     }
 
     #[tokio::test]
     async fn created_execution_added_to_job() {
-        let store = DatabasePersistance::new(":memory:").await;
+        let store = DatabasePersistance::new(":memory:").await.unwrap();
         test::created_execution_added_to_job(store).await;
     }
 
     #[tokio::test]
     pub async fn inserted_executions_dont_have_status() {
-        let store = DatabasePersistance::new(":memory:").await;
+        let store = DatabasePersistance::new(":memory:").await.unwrap();
         test::inserted_executions_dont_have_status(store).await;
     }
 
     #[tokio::test]
     async fn status_properly_saved() {
-        let store = DatabasePersistance::new(":memory:").await;
+        let store = DatabasePersistance::new(":memory:").await.unwrap();
         test::status_properly_saved(store).await;
     }
 }
