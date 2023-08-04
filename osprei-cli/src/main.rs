@@ -51,15 +51,9 @@ async fn main() {
         .expect("Server must be specified");
     match commands {
         Commands::List => {
-            let jobs = osprei_cli::Client::new(server).jobs_list().await;
-            if jobs.is_empty() {
-                println!("No jobs yet, try adding a job.");
-            } else {
-                println!("Id\tName\tStatus");
-                for osprei_cli::JobLine { id, name, status } in jobs {
-                    println!("{}\t{}\t{}", id, name, status);
-                }
-            }
+            let client = osprei_cli::Client::new(server);
+            let handler = osprei_cli::Handler::new(client);
+            handler.handle_list().await;
         }
         Commands::Add(JobAddArgs { name, source, path }) => {
             let url = format!("{}/job", server);

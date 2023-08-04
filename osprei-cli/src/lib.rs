@@ -64,3 +64,26 @@ pub struct JobLine {
     pub name: String,
     pub status: String,
 }
+
+pub struct Handler {
+    client: Client,
+}
+
+impl Handler {
+    pub fn new(client: Client) -> Self {
+        Handler { client }
+    }
+
+    pub async fn handle_list(&self) {
+        let jobs = self.client.jobs_list().await;
+        if jobs.is_empty() {
+            println!("No jobs yet, try adding a job.");
+        } else {
+            for JobLine { id, name, status } in jobs {
+                println!("- id: {}", id);
+                println!("  name: {}", name);
+                println!("  status: {}", status);
+            }
+        }
+    }
+}
