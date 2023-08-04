@@ -8,7 +8,7 @@ use reqwest::Client;
 struct Args {
     /// Server to which to connect to send the requests
     #[arg(short, long)]
-    server: String,
+    server: Option<String>,
 
     #[command(subcommand)]
     commands: Commands,
@@ -46,6 +46,9 @@ struct JobScheduleArgs {
 #[tokio::main]
 async fn main() {
     let Args { server, commands } = Args::parse();
+    let server = server
+        .or_else(|| std::env::var("OSPREI_SERVER").ok())
+        .expect("Server must be specified");
     match commands {
         Commands::List => {
             let jobs = osprei_cli::Client::new(server).jobs_list().await;
