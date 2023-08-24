@@ -192,46 +192,20 @@ impl Storage for MemoryStore {
         let schedules = data.schedules.values().cloned().collect();
         Ok(schedules)
     }
+
+    async fn get_last_execution(&self, _job_id: i64) -> StoreResult<Option<osprei::LastExecution>> {
+        todo!()
+    }
 }
 
 #[cfg(test)]
 mod test {
-    use super::*;
-    use crate::persistance::test;
+    use crate::test_store;
+    use super::MemoryStore;
 
-    #[tokio::test]
-    async fn listed_jobs_increase_on_job_added() {
-        let store = MemoryStore::default();
-        test::listed_jobs_increase_on_job_added(store).await;
+    async fn create() -> MemoryStore {
+        MemoryStore::default()
     }
 
-    #[tokio::test]
-    async fn get_back_job_when_using_retruned_id() {
-        let store = MemoryStore::default();
-        test::get_back_job_when_using_retruned_id(store).await;
-    }
-
-    #[tokio::test]
-    async fn using_invalid_id_returs_user_error() {
-        let store = MemoryStore::default();
-        test::using_invalid_id_returs_user_error(store).await;
-    }
-
-    #[tokio::test]
-    async fn created_execution_added_to_job() {
-        let store = MemoryStore::default();
-        test::created_execution_added_to_job(store).await;
-    }
-
-    #[tokio::test]
-    pub async fn inserted_executions_dont_have_status() {
-        let store = MemoryStore::default();
-        test::inserted_executions_dont_have_status(store).await;
-    }
-
-    #[tokio::test]
-    async fn status_properly_saved() {
-        let store = MemoryStore::default();
-        test::status_properly_saved(store).await;
-    }
+    test_store!(create);
 }

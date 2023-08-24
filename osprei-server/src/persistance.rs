@@ -167,6 +167,20 @@ pub trait Storage: Send + Sync + 'static {
     /// If the operation encounters an error, a store error is returned.
     /// Otherwise, the vector of schedules is returned.
     async fn get_all_schedules(&self) -> StoreResult<Vec<osprei::Schedule>>;
+
+    /// Gets the last execution if it exists for the specified job ID.
+    ///
+    /// # Arguments
+    ///
+    /// * `job_id` - The ID of the job for which to retrieve the last execution.
+    ///
+    /// # Returns
+    ///
+    /// Returns a `StoreResult` containing the latest execution if present. If
+    /// the requested job does not exist, a `StorageError::UserError` is
+    /// returned. If the job has been executed, its last execution is
+    /// returned; otherwise, `None` is returned.
+    async fn get_last_execution(&self, job_id: i64) -> StoreResult<Option<osprei::LastExecution>>;
 }
 
 #[derive(Debug)]
@@ -307,6 +321,52 @@ mod test {
             execution.status,
             Some(osprei::ExecutionStatus::Success)
         ));
+    }
+    
+    #[macro_export]
+    macro_rules! test_store {
+        ($init: expr) => {
+            mod storage {
+                use super::*;
+                use crate::persistance::test;
+
+                #[tokio::test]
+                async fn listed_jobs_increase_on_job_added() {
+                    let store = $init().await;
+                    test::listed_jobs_increase_on_job_added(store).await;
+                }
+
+                #[tokio::test]
+                async fn get_back_job_when_using_retruned_id() {
+                    let store = $init().await;
+                    test::get_back_job_when_using_retruned_id(store).await;
+                }
+
+                #[tokio::test]
+                async fn using_invalid_id_returs_user_error() {
+                    let store = $init().await;
+                    test::using_invalid_id_returs_user_error(store).await;
+                }
+
+                #[tokio::test]
+                async fn created_execution_added_to_job() {
+                    let store = $init().await;
+                    test::created_execution_added_to_job(store).await;
+                }
+
+                #[tokio::test]
+                pub async fn inserted_executions_dont_have_status() {
+                    let store = $init().await;
+                    test::inserted_executions_dont_have_status(store).await;
+                }
+
+                #[tokio::test]
+                async fn status_properly_saved() {
+                    let store = $init().await;
+                    test::status_properly_saved(store).await;
+                }
+            }
+        }
     }
 }
 

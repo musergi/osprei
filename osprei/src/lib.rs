@@ -118,3 +118,9 @@ pub struct ScheduleRequest {
     /// Minute of day the job runs
     pub minute: u8,
 }
+
+#[derive(Debug, Clone, PartialEq, serde::Deserialize, serde::Serialize)]
+pub struct LastExecution {
+    start_time: String,
+    status: ExecutionStatus,
+}
