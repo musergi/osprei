@@ -21,15 +21,50 @@ impl DatabasePersistance {
             }
         };
         let mut conn = pool.acquire().await?;
-        sqlx::query("CREATE TABLE IF NOT EXISTS jobs (id INTEGER PRIMARY KEY, name TEXT, source TEXT, path TEXT)")
-            .execute(&mut conn)
-            .await?;
-        sqlx::query("CREATE TABLE IF NOT EXISTS executions (id INTEGER PRIMARY KEY, job_id INTEGER, start_time TIMESTAMP, status INTEGER, FOREIGN KEY (job_id) REFERENCES jobs(id))")
-            .execute(&mut conn)
-            .await?;
-        sqlx::query("CREATE TABLE IF NOT EXISTS schedules (id INTEGER PRIMARY KEY, job_id INTEGER, hour INTEGER, minute INTEGER, FOREIGN KEY (job_id) REFERENCES jobs(id))")
-            .execute(&mut conn)
-            .await?;
+        sqlx::query(
+            "
+                CREATE TABLE IF NOT EXISTS
+                    jobs
+                (
+                    id INTEGER PRIMARY KEY,
+                    name TEXT,
+                    source TEXT,
+                    path TEXT
+                )
+            ",
+        )
+        .execute(&mut conn)
+        .await?;
+        sqlx::query(
+            "
+                CREATE TABLE IF NOT EXISTS
+                    executions
+                (
+                    id INTEGER PRIMARY KEY,
+                    job_id INTEGER,
+                    start_time TIMESTAMP,
+                    status INTEGER,
+                    FOREIGN KEY (job_id) REFERENCES jobs(id)
+                )
+            ",
+        )
+        .execute(&mut conn)
+        .await?;
+        sqlx::query(
+            "
+                CREATE TABLE IF NOT EXISTS
+                    schedules
+                (
+                    id INTEGER PRIMARY KEY,
+                    job_id INTEGER,
+                    hour INTEGER,
+                    minute INTEGER,
+                    FOREIGN KEY (job_id) REFERENCES jobs(id)
+                )
+            ",
+        )
+        .execute(&mut conn)
+        .await?;
         Ok(DatabasePersistance { pool })
     }
 }
@@ -44,7 +79,7 @@ impl Storage for DatabasePersistance {
             .into_iter()
             .map(|row| row.get(0))
             .collect();
-        return Ok(ids);
+        Ok(ids)
     }
 
     async fn store_job(&self, name: String, source: String, path: String) -> StoreResult<i64> {
@@ -207,8 +242,8 @@ impl From<sqlx::Error> for StorageError {
 
 #[cfg(test)]
 mod test {
-    use crate::test_store;
     use super::DatabasePersistance;
+    use crate::test_store;
 
     async fn create() -> DatabasePersistance {
         DatabasePersistance::new(":memory:").await.unwrap()

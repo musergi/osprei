@@ -322,7 +322,7 @@ mod test {
             Some(osprei::ExecutionStatus::Success)
         ));
     }
-    
+
     #[macro_export]
     macro_rules! test_store {
         ($init: expr) => {
@@ -366,7 +366,7 @@ mod test {
                     test::status_properly_saved(store).await;
                 }
             }
-        }
+        };
     }
 }
 

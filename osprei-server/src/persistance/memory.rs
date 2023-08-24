@@ -200,8 +200,8 @@ impl Storage for MemoryStore {
 
 #[cfg(test)]
 mod test {
-    use crate::test_store;
     use super::MemoryStore;
+    use crate::test_store;
 
     async fn create() -> MemoryStore {
         MemoryStore::default()
