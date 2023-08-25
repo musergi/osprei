@@ -323,6 +323,23 @@ mod test {
         ));
     }
 
+    pub async fn last_execution_details(storage: impl super::Storage) {
+        let name = String::from("test_job_name");
+        let source = String::from("https://github.com/musergi/osprei.git");
+        let path = String::from(".ci/test.json");
+        let job_id = storage.store_job(name, source, path).await.unwrap();
+        let last_execution = storage.get_last_execution(job_id).await.unwrap();
+        assert!(last_execution.is_none());
+        let execution_id = storage.create_execution(job_id).await.unwrap();
+        storage
+            .set_execution_status(execution_id, osprei::ExecutionStatus::Failed)
+            .await
+            .unwrap();
+        let last_execution = storage.get_last_execution(job_id).await.unwrap().unwrap();
+        assert_eq!(last_execution.id, execution_id);
+        assert_eq!(last_execution.status, Some(osprei::ExecutionStatus::Failed));
+    }
+
     #[macro_export]
     macro_rules! test_store {
         ($init: expr) => {
@@ -364,6 +381,12 @@ mod test {
                 async fn status_properly_saved() {
                     let store = $init().await;
                     test::status_properly_saved(store).await;
+                }
+
+                #[tokio::test]
+                async fn last_execution_details() {
+                    let store = $init().await;
+                    test::last_execution_details(store).await;
                 }
             }
         };

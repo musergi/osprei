@@ -1,7 +1,9 @@
 use std::{collections::BTreeMap, sync::Arc};
 
 use chrono::{DateTime, NaiveDateTime, Utc};
-use osprei::{ExecutionDetails, ExecutionSummary, JobPointer, Schedule, ScheduleRequest};
+use osprei::{
+    ExecutionDetails, ExecutionSummary, JobPointer, LastExecution, Schedule, ScheduleRequest,
+};
 use tokio::sync::Mutex;
 
 use super::{Storage, StorageError, StoreResult};
@@ -193,8 +195,26 @@ impl Storage for MemoryStore {
         Ok(schedules)
     }
 
-    async fn get_last_execution(&self, _job_id: i64) -> StoreResult<Option<osprei::LastExecution>> {
-        todo!()
+    async fn get_last_execution(&self, job_id: i64) -> StoreResult<Option<osprei::LastExecution>> {
+        let data = self.data.lock().await;
+        let job = data
+            .executions
+            .iter()
+            .filter(|(_, execution)| execution.job_id == job_id)
+            .max_by_key(|(_, exec)| exec.start_time)
+            .map(
+                |(
+                    id,
+                    Execution {
+                        start_time, status, ..
+                    },
+                )| LastExecution {
+                    id: *id,
+                    start_time: timestamp_str(*start_time),
+                    status: *status,
+                },
+            );
+        Ok(job)
     }
 }
 

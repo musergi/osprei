@@ -121,6 +121,10 @@ pub struct ScheduleRequest {
 
 #[derive(Debug, Clone, PartialEq, serde::Deserialize, serde::Serialize)]
 pub struct LastExecution {
-    start_time: String,
-    status: ExecutionStatus,
+    /// Unique identifier for the execution
+    pub id: i64,
+    /// Start time of the executio
+    pub start_time: String,
+    /// Status of the execution
+    pub status: Option<ExecutionStatus>,
 }

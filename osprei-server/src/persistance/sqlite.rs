@@ -230,7 +230,21 @@ impl Storage for DatabasePersistance {
     }
 
     async fn get_last_execution(&self, _job_id: i64) -> StoreResult<Option<osprei::LastExecution>> {
-        todo!()
+        let mut conn = self.pool.acquire().await?;
+        let schedule = sqlx::query("SELECT id, start_time, status FROM executions WHERE job_id = $1 ORDER BY start_time DESC LIMIT 1")
+            .bind(_job_id)
+            .fetch_optional(&mut conn)
+            .await?
+            .map(|row| {
+                let status_encoded: Option<i64> = row.get(2);
+                let status = status_encoded.map(osprei::ExecutionStatus::from);
+                osprei::LastExecution{
+                    id: row.get(0),
+                    start_time: row.get(1),
+                    status
+                }
+            });
+        Ok(schedule)
     }
 }
 
