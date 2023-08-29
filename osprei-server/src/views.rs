@@ -31,6 +31,14 @@ pub async fn post_job(
     reply(job_id)
 }
 
+pub async fn get_last_job_execution(
+    job_id: i64,
+    job_store: Box<dyn Storage>,
+) -> Result<impl warp::Reply, Infallible> {
+    let execution = job_store.get_last_execution(job_id).await;
+    reply(execution)
+}
+
 pub async fn get_job_run(
     job_id: i64,
     path_builder: PathBuilder,

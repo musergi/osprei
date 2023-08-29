@@ -22,6 +22,10 @@ pub fn routes(
         .and(warp::body::json())
         .and(persistance::with(persistance.clone()))
         .and_then(views::post_job);
+    let get_last_job_execution = warp::path!("job" / i64 / "last")
+        .and(warp::get())
+        .and(persistance::with(persistance.clone()))
+        .and_then(views::get_last_job_execution);
     let get_job_run = warp::path!("job" / i64 / "run")
         .and(warp::get())
         .and(with_path_builder(path_builder.clone()))
@@ -48,6 +52,7 @@ pub fn routes(
     get_jobs
         .or(get_job)
         .or(post_job)
+        .or(get_last_job_execution)
         .or(get_job_run)
         .or(get_job_executions)
         .or(get_execution)

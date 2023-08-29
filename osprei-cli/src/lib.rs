@@ -11,17 +11,14 @@ impl Client {
         let mut lines = Vec::new();
         for job_id in self.list_jobs().await {
             let osprei::JobPointer { name, .. } = self.job(job_id).await;
-            let executions = self.executions(job_id).await;
-            let status = match executions.get(0) {
-                Some(osprei::ExecutionSummary { id, .. }) => {
-                    let osprei::ExecutionDetails { status, .. } = self.execution(*id).await;
-                    match status {
-                        Some(osprei::ExecutionStatus::Success) => "Success",
-                        Some(osprei::ExecutionStatus::Failed) => "Failed",
-                        Some(osprei::ExecutionStatus::InvalidConfig) => "Invalid config",
-                        None => "Not executed",
-                    }
-                }
+            let execution = self.last_execution(job_id).await;
+            let status = match execution {
+                Some(osprei::LastExecution { status, .. }) => match status {
+                    Some(osprei::ExecutionStatus::Success) => "Success",
+                    Some(osprei::ExecutionStatus::Failed) => "Failed",
+                    Some(osprei::ExecutionStatus::InvalidConfig) => "Invalid config",
+                    None => "Running",
+                },
                 None => "Not executed",
             }
             .to_string();
@@ -42,6 +39,12 @@ impl Client {
 
     async fn job(&self, id: i64) -> osprei::JobPointer {
         let url = format!("{}/job/{}", self.url, id);
+        let response = reqwest::get(&url).await.unwrap().text().await.unwrap();
+        serde_json::from_str(&response).unwrap()
+    }
+
+    async fn last_execution(&self, id: i64) -> Option<osprei::LastExecution> {
+        let url = format!("{}/job/{}/last", self.url, id);
         let response = reqwest::get(&url).await.unwrap().text().await.unwrap();
         serde_json::from_str(&response).unwrap()
     }
