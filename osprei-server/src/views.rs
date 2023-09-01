@@ -1,7 +1,7 @@
 use std::convert::Infallible;
 
 use log::error;
-use osprei::{JobCreationRequest, JobPointer};
+use osprei::{JobCreationRequest, JobPointer, LastExecutionResponse};
 
 use crate::{
     execute,
@@ -35,7 +35,10 @@ pub async fn get_last_job_execution(
     job_id: i64,
     job_store: Box<dyn Storage>,
 ) -> Result<impl warp::Reply, Infallible> {
-    let execution = job_store.get_last_execution(job_id).await;
+    let execution = job_store
+        .get_last_execution(job_id)
+        .await
+        .map(|last| LastExecutionResponse { last });
     reply(execution)
 }
 

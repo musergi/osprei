@@ -120,6 +120,12 @@ pub struct ScheduleRequest {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Deserialize, serde::Serialize)]
+pub struct LastExecutionResponse {
+    /// If executed the last execution
+    pub last: Option<LastExecution>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Deserialize, serde::Serialize)]
 pub struct LastExecution {
     /// Unique identifier for the execution
     pub id: i64,

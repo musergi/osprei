@@ -1,3 +1,5 @@
+use osprei::LastExecutionResponse;
+
 pub struct Client {
     url: String,
 }
@@ -46,19 +48,8 @@ impl Client {
     async fn last_execution(&self, id: i64) -> Option<osprei::LastExecution> {
         let url = format!("{}/job/{}/last", self.url, id);
         let response = reqwest::get(&url).await.unwrap().text().await.unwrap();
-        serde_json::from_str(&response).unwrap()
-    }
-
-    async fn executions(&self, id: i64) -> Vec<osprei::ExecutionSummary> {
-        let url = format!("{}/job/{}/executions", self.url, id);
-        let response = reqwest::get(&url).await.unwrap().text().await.unwrap();
-        serde_json::from_str(&response).unwrap()
-    }
-
-    async fn execution(&self, id: i64) -> osprei::ExecutionDetails {
-        let url = format!("{}/execution/{}", self.url, id);
-        let response = reqwest::get(&url).await.unwrap().text().await.unwrap();
-        serde_json::from_str(&response).unwrap()
+        let last_execution: LastExecutionResponse = serde_json::from_str(&response).unwrap();
+        last_execution.last
     }
 }
 
