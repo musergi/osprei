@@ -8,7 +8,6 @@ pub mod views;
 pub struct PathBuilder {
     workspace_dir: String,
     result_dir: String,
-    _database_path: String,
 }
 
 impl PathBuilder {
@@ -19,7 +18,6 @@ impl PathBuilder {
         PathBuilder {
             workspace_dir,
             result_dir,
-            _database_path,
         }
     }
 
