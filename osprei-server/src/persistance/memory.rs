@@ -23,6 +23,7 @@ struct MemoryStorage {
     schedules: BTreeMap<i64, Schedule>,
 }
 
+#[derive(Debug, Clone)]
 struct Execution {
     id: i64,
     job_id: i64,
@@ -43,6 +44,37 @@ impl Storage for MemoryStore {
     async fn list_jobs(&self) -> StoreResult<Vec<i64>> {
         let ids = self.data.lock().await.jobs.keys().cloned().collect();
         Ok(ids)
+    }
+
+    async fn list_jobs_new(&self) -> StoreResult<Vec<osprei::JobOverview>> {
+        let data = self.data.lock().await;
+        let mut res = Vec::new();
+        for (_, JobPointer { id, name, .. }) in data.jobs.iter() {
+            let last_execution = data
+                .executions
+                .values()
+                .filter(|execution| execution.job_id == *id)
+                .max_by_key(|execution| execution.start_time)
+                .cloned()
+                .map(
+                    |Execution {
+                         id,
+                         start_time,
+                         status,
+                         ..
+                     }| LastExecution {
+                        id,
+                        start_time: timestamp_str(start_time),
+                        status,
+                    },
+                );
+            res.push(osprei::JobOverview {
+                id: id.clone(),
+                name: name.clone(),
+                last_execution,
+            });
+        }
+        Ok(res)
     }
 
     async fn store_job(&self, name: String, source: String, path: String) -> StoreResult<i64> {

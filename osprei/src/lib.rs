@@ -71,7 +71,7 @@ pub struct ExecutionDetails {
     pub status: Option<ExecutionStatus>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, serde::Deserialize, serde::Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
 pub enum ExecutionStatus {
     Success,
     Failed,
@@ -125,7 +125,7 @@ pub struct LastExecutionResponse {
     pub last: Option<LastExecution>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Deserialize, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
 pub struct LastExecution {
     /// Unique identifier for the execution
     pub id: i64,
@@ -133,4 +133,11 @@ pub struct LastExecution {
     pub start_time: String,
     /// Status of the execution
     pub status: Option<ExecutionStatus>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+pub struct JobOverview {
+    pub id: i64,
+    pub name: String,
+    pub last_execution: Option<LastExecution>,
 }

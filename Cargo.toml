@@ -5,3 +5,4 @@ members = [
     "osprei",
     "osprei-cli",
 ]
+resolver = "2"

@@ -15,6 +15,8 @@ pub trait Storage: Send + Sync + 'static {
     /// returned. Otherwise, a store error is returned.
     async fn list_jobs(&self) -> StoreResult<Vec<i64>>;
 
+    async fn list_jobs_new(&self) -> StoreResult<Vec<osprei::JobOverview>>;
+
     /// Stores a job into the database and returns the newly created job ID.
     ///
     /// # Arguments
@@ -340,54 +342,130 @@ mod test {
         assert_eq!(last_execution.status, Some(osprei::ExecutionStatus::Failed));
     }
 
+    pub async fn when_job_not_executed_last_execution_empty(storage: impl super::Storage) {
+        let name = String::from("test_job_name");
+        let source = String::from("https://github.com/musergi/osprei.git");
+        let path = String::from(".ci/test.json");
+        storage.store_job(name, source, path).await.unwrap();
+        let job_listing = storage.list_jobs_new().await.unwrap();
+        assert!(job_listing
+            .get(0)
+            .expect("no job found")
+            .last_execution
+            .is_none())
+    }
+
+    pub async fn when_job_added_listing_increases(storage: impl super::Storage) {
+        let name = String::from("test_job_name");
+        let source = String::from("https://github.com/musergi/osprei.git");
+        let path = String::from(".ci/test.json");
+        storage.store_job(name, source, path).await.unwrap();
+        let job_listing = storage.list_jobs_new().await.unwrap();
+        assert_eq!(job_listing.len(), 1)
+    }
+
+    pub async fn when_job_executed_last_execution_present(storage: impl super::Storage) {
+        let name = String::from("test_job_name");
+        let source = String::from("https://github.com/musergi/osprei.git");
+        let path = String::from(".ci/test.json");
+        let id = storage.store_job(name, source, path).await.unwrap();
+        storage.create_execution(id).await.unwrap();
+        let job_listing = storage.list_jobs_new().await.unwrap();
+        assert!(job_listing
+            .get(0)
+            .expect("no job found")
+            .last_execution
+            .is_some())
+    }
+
+    pub async fn when_job_executed_and_status_set_status_present(storage: impl super::Storage) {
+        let name = String::from("test_job_name");
+        let source = String::from("https://github.com/musergi/osprei.git");
+        let path = String::from(".ci/test.json");
+        let id = storage.store_job(name, source, path).await.unwrap();
+        let execution_id = storage.create_execution(id).await.unwrap();
+        storage
+            .set_execution_status(execution_id, osprei::ExecutionStatus::Success)
+            .await
+            .unwrap();
+        let job_listing = storage.list_jobs_new().await.unwrap();
+        assert_eq!(
+            job_listing
+                .get(0)
+                .expect("no job found")
+                .last_execution
+                .as_ref()
+                .expect("execution not found")
+                .status
+                .expect("status not set"),
+            osprei::ExecutionStatus::Success
+        )
+    }
+
+    pub async fn when_job_executed_and_status_not_set_status_empty(storage: impl super::Storage) {
+        let name = String::from("test_job_name");
+        let source = String::from("https://github.com/musergi/osprei.git");
+        let path = String::from(".ci/test.json");
+        let id = storage.store_job(name, source, path).await.unwrap();
+        storage.create_execution(id).await.unwrap();
+        let job_listing = storage.list_jobs_new().await.unwrap();
+        assert!(job_listing
+            .get(0)
+            .expect("no job found")
+            .last_execution
+            .as_ref()
+            .expect("execution not found")
+            .status
+            .is_none())
+    }
+
+    pub async fn when_multiple_jobs_and_only_one_executed_all_lister(storage: impl super::Storage) {
+        let name = String::from("test_job_name");
+        let source = String::from("https://github.com/musergi/osprei.git");
+        let path = String::from(".ci/test.json");
+        let id = storage
+            .store_job(name.clone(), source.clone(), path.clone())
+            .await
+            .unwrap();
+        storage.create_execution(id).await.unwrap();
+        storage.store_job(name, source, path).await.unwrap();
+        let job_listing = storage.list_jobs_new().await.unwrap();
+        assert_eq!(job_listing.len(), 2)
+    }
+
+    #[macro_export]
+    macro_rules! add_persistance_test {
+        ($test_name: ident, $init: expr) => {
+            #[tokio::test]
+            async fn $test_name() {
+                let store = $init().await;
+                test::$test_name(store).await;
+            }
+        };
+    }
+
     #[macro_export]
     macro_rules! test_store {
         ($init: expr) => {
             mod storage {
                 use super::*;
+                use crate::add_persistance_test;
                 use crate::persistance::test;
 
-                #[tokio::test]
-                async fn listed_jobs_increase_on_job_added() {
-                    let store = $init().await;
-                    test::listed_jobs_increase_on_job_added(store).await;
-                }
+                add_persistance_test!(listed_jobs_increase_on_job_added, $init);
+                add_persistance_test!(get_back_job_when_using_retruned_id, $init);
+                add_persistance_test!(using_invalid_id_returs_user_error, $init);
+                add_persistance_test!(created_execution_added_to_job, $init);
+                add_persistance_test!(inserted_executions_dont_have_status, $init);
+                add_persistance_test!(status_properly_saved, $init);
+                add_persistance_test!(last_execution_details, $init);
 
-                #[tokio::test]
-                async fn get_back_job_when_using_retruned_id() {
-                    let store = $init().await;
-                    test::get_back_job_when_using_retruned_id(store).await;
-                }
-
-                #[tokio::test]
-                async fn using_invalid_id_returs_user_error() {
-                    let store = $init().await;
-                    test::using_invalid_id_returs_user_error(store).await;
-                }
-
-                #[tokio::test]
-                async fn created_execution_added_to_job() {
-                    let store = $init().await;
-                    test::created_execution_added_to_job(store).await;
-                }
-
-                #[tokio::test]
-                pub async fn inserted_executions_dont_have_status() {
-                    let store = $init().await;
-                    test::inserted_executions_dont_have_status(store).await;
-                }
-
-                #[tokio::test]
-                async fn status_properly_saved() {
-                    let store = $init().await;
-                    test::status_properly_saved(store).await;
-                }
-
-                #[tokio::test]
-                async fn last_execution_details() {
-                    let store = $init().await;
-                    test::last_execution_details(store).await;
-                }
+                add_persistance_test!(when_job_added_listing_increases, $init);
+                add_persistance_test!(when_job_not_executed_last_execution_empty, $init);
+                add_persistance_test!(when_job_executed_last_execution_present, $init);
+                add_persistance_test!(when_job_executed_and_status_set_status_present, $init);
+                add_persistance_test!(when_job_executed_and_status_not_set_status_empty, $init);
+                add_persistance_test!(when_multiple_jobs_and_only_one_executed_all_lister, $init);
             }
         };
     }
