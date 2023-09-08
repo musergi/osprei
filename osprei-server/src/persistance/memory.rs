@@ -41,11 +41,6 @@ fn timestamp_str(secs_since_epoch: u64) -> String {
 
 #[async_trait::async_trait]
 impl Storage for MemoryStore {
-    async fn list_jobs(&self) -> StoreResult<Vec<i64>> {
-        let ids = self.data.lock().await.jobs.keys().cloned().collect();
-        Ok(ids)
-    }
-
     async fn list_jobs_new(&self) -> StoreResult<Vec<osprei::JobOverview>> {
         let data = self.data.lock().await;
         let mut res = Vec::new();

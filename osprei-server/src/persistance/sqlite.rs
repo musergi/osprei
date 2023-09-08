@@ -71,17 +71,6 @@ impl DatabasePersistance {
 
 #[async_trait::async_trait]
 impl Storage for DatabasePersistance {
-    async fn list_jobs(&self) -> StoreResult<Vec<i64>> {
-        let mut conn = self.pool.acquire().await?;
-        let ids = sqlx::query("SELECT id FROM jobs")
-            .fetch_all(&mut conn)
-            .await?
-            .into_iter()
-            .map(|row| row.get(0))
-            .collect();
-        Ok(ids)
-    }
-
     async fn list_jobs_new(&self) -> StoreResult<Vec<osprei::JobOverview>> {
         let mut conn = self.pool.acquire().await?;
         let jobs = sqlx::query(

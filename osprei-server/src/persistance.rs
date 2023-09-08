@@ -6,15 +6,6 @@ type StoreResult<T> = Result<T, StorageError>;
 
 #[async_trait::async_trait]
 pub trait Storage: Send + Sync + 'static {
-    /// Lists all valid job identifiers.
-    ///
-    /// # Returns
-    ///
-    /// Returns a `StoreResult` containing a vector of valid job identifiers.
-    /// If the operation is successful, the vector of job identifiers is
-    /// returned. Otherwise, a store error is returned.
-    async fn list_jobs(&self) -> StoreResult<Vec<i64>>;
-
     async fn list_jobs_new(&self) -> StoreResult<Vec<osprei::JobOverview>>;
 
     /// Stores a job into the database and returns the newly created job ID.
@@ -241,20 +232,6 @@ pub fn with(
 
 #[cfg(test)]
 mod test {
-    use super::StorageError;
-
-    pub async fn listed_jobs_increase_on_job_added(storage: impl super::Storage) {
-        let initial_job_ids = storage.list_jobs().await.unwrap();
-
-        let name = String::from("test_job_name");
-        let source = String::from("https://github.com/musergi/osprei.git");
-        let path = String::from(".ci/test.json");
-        let _ = storage.store_job(name.clone(), source, path).await.unwrap();
-
-        let new_job_count = storage.list_jobs().await.unwrap().len();
-        assert_eq!(new_job_count, initial_job_ids.len() + 1);
-    }
-
     pub async fn get_back_job_when_using_retruned_id(storage: impl super::Storage) {
         let name = String::from("test_job_name");
         let source = String::from("https://github.com/musergi/osprei.git");
@@ -269,12 +246,6 @@ mod test {
         assert_eq!(job.name, name);
         assert_eq!(job.source, source);
         assert_eq!(job.path, path);
-    }
-
-    pub async fn using_invalid_id_returs_user_error(storage: impl super::Storage) {
-        assert!(storage.list_jobs().await.unwrap().is_empty());
-        let res = storage.fetch_job(0).await;
-        assert!(matches!(res, Err(StorageError::UserError(_))));
     }
 
     pub async fn created_execution_added_to_job(storage: impl super::Storage) {
@@ -452,9 +423,7 @@ mod test {
                 use crate::add_persistance_test;
                 use crate::persistance::test;
 
-                add_persistance_test!(listed_jobs_increase_on_job_added, $init);
                 add_persistance_test!(get_back_job_when_using_retruned_id, $init);
-                add_persistance_test!(using_invalid_id_returs_user_error, $init);
                 add_persistance_test!(created_execution_added_to_job, $init);
                 add_persistance_test!(inserted_executions_dont_have_status, $init);
                 add_persistance_test!(status_properly_saved, $init);

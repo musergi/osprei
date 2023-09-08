@@ -1,5 +1,3 @@
-use osprei::LastExecutionResponse;
-
 pub struct Client {
     url: String,
 }
@@ -11,10 +9,13 @@ impl Client {
 
     pub async fn jobs_list(&self) -> Vec<JobLine> {
         let mut lines = Vec::new();
-        for job_id in self.list_jobs().await {
-            let osprei::JobPointer { name, .. } = self.job(job_id).await;
-            let execution = self.last_execution(job_id).await;
-            let status = match execution {
+        for osprei::JobOverview {
+            id,
+            name,
+            last_execution,
+        } in self.list_jobs().await
+        {
+            let status = match last_execution {
                 Some(osprei::LastExecution { status, .. }) => match status {
                     Some(osprei::ExecutionStatus::Success) => "Success",
                     Some(osprei::ExecutionStatus::Failed) => "Failed",
@@ -24,32 +25,15 @@ impl Client {
                 None => "Not executed",
             }
             .to_string();
-            lines.push(JobLine {
-                id: job_id,
-                name,
-                status,
-            });
+            lines.push(JobLine { id, name, status });
         }
         lines
     }
 
-    async fn list_jobs(&self) -> Vec<i64> {
+    async fn list_jobs(&self) -> Vec<osprei::JobOverview> {
         let url = format!("{}/job", self.url);
         let response = reqwest::get(&url).await.unwrap().text().await.unwrap();
         serde_json::from_str(&response).unwrap()
-    }
-
-    async fn job(&self, id: i64) -> osprei::JobPointer {
-        let url = format!("{}/job/{}", self.url, id);
-        let response = reqwest::get(&url).await.unwrap().text().await.unwrap();
-        serde_json::from_str(&response).unwrap()
-    }
-
-    async fn last_execution(&self, id: i64) -> Option<osprei::LastExecution> {
-        let url = format!("{}/job/{}/last", self.url, id);
-        let response = reqwest::get(&url).await.unwrap().text().await.unwrap();
-        let last_execution: LastExecutionResponse = serde_json::from_str(&response).unwrap();
-        last_execution.last
     }
 }
 

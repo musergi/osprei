@@ -10,7 +10,7 @@ use crate::{
 };
 
 pub async fn get_jobs(job_store: Box<dyn Storage>) -> Result<impl warp::Reply, Infallible> {
-    let jobs = job_store.list_jobs().await;
+    let jobs = job_store.list_jobs_new().await;
     reply(jobs)
 }
 
