@@ -1,9 +1,7 @@
 use std::{collections::BTreeMap, sync::Arc};
 
 use chrono::{DateTime, NaiveDateTime, Utc};
-use osprei::{
-    ExecutionDetails, ExecutionSummary, JobPointer, LastExecution, Schedule, ScheduleRequest,
-};
+use osprei::{ExecutionDetails, JobPointer, LastExecution, Schedule, ScheduleRequest};
 use tokio::sync::Mutex;
 
 use super::{Storage, StorageError, StoreResult};
@@ -98,10 +96,6 @@ impl Storage for MemoryStore {
         Ok(job)
     }
 
-    async fn fetch_job_description(&self, _id: i64) -> StoreResult<osprei::Job> {
-        todo!()
-    }
-
     async fn create_execution(&self, job_id: i64) -> StoreResult<i64> {
         let start_time = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -161,29 +155,6 @@ impl Storage for MemoryStore {
         Ok(execution)
     }
 
-    async fn last_executions(
-        &self,
-        job_id: i64,
-        limit: usize,
-    ) -> StoreResult<Vec<osprei::ExecutionSummary>> {
-        let data = self.data.lock().await;
-        let mut job_executions: Vec<_> = data
-            .executions
-            .values()
-            .filter(|execution| execution.job_id == job_id)
-            .collect();
-        job_executions.sort_by(|&a, &b| b.start_time.cmp(&a.start_time));
-        let summaries = job_executions
-            .into_iter()
-            .take(limit)
-            .map(|execution| ExecutionSummary {
-                id: execution.id,
-                start_time: timestamp_str(execution.start_time),
-            })
-            .collect();
-        Ok(summaries)
-    }
-
     async fn create_daily(
         &self,
         job_id: i64,
@@ -205,43 +176,10 @@ impl Storage for MemoryStore {
         Ok(id)
     }
 
-    async fn get_schedules(&self, job_id: i64) -> StoreResult<Vec<osprei::Schedule>> {
-        let data = self.data.lock().await;
-        let schedules = data
-            .schedules
-            .values()
-            .filter(|s| s.job_id == job_id)
-            .cloned()
-            .collect();
-        Ok(schedules)
-    }
-
     async fn get_all_schedules(&self) -> StoreResult<Vec<osprei::Schedule>> {
         let data = self.data.lock().await;
         let schedules = data.schedules.values().cloned().collect();
         Ok(schedules)
-    }
-
-    async fn get_last_execution(&self, job_id: i64) -> StoreResult<Option<osprei::LastExecution>> {
-        let data = self.data.lock().await;
-        let job = data
-            .executions
-            .iter()
-            .filter(|(_, execution)| execution.job_id == job_id)
-            .max_by_key(|(_, exec)| exec.start_time)
-            .map(
-                |(
-                    id,
-                    Execution {
-                        start_time, status, ..
-                    },
-                )| LastExecution {
-                    id: *id,
-                    start_time: timestamp_str(*start_time),
-                    status: *status,
-                },
-            );
-        Ok(job)
     }
 }
 

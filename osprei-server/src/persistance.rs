@@ -8,172 +8,24 @@ type StoreResult<T> = Result<T, StorageError>;
 pub trait Storage: Send + Sync + 'static {
     async fn list_jobs_new(&self) -> StoreResult<Vec<osprei::JobOverview>>;
 
-    /// Stores a job into the database and returns the newly created job ID.
-    ///
-    /// # Arguments
-    ///
-    /// * `name` - The name of the job being stored.
-    /// * `source` - The Git repository URL to the source code to test.
-    /// * `path` - The relative path from the root of the repository to the job
-    ///   description.
-    ///
-    /// # Returns
-    ///
-    /// Returns the ID of the newly created job wrapped in a `StoreResult`.
-    /// If the job is successfully stored, its ID is returned.
-    /// Otherwise, a store error is returned.
     async fn store_job(&self, name: String, source: String, path: String) -> StoreResult<i64>;
 
-    /// Fetches the job pointer from the database.
-    ///
-    /// It is important to note that the job description is not stored in the
-    /// database. Instead, it may be cached and later returned by the
-    /// corresponding method.
-    ///
-    /// # Arguments
-    ///
-    /// * `id` - The ID of the job for which the job pointer is fetched.
-    ///
-    /// # Returns
-    ///
-    /// Returns the job pointer wrapped in a `StoreResult`.
-    /// If the requested ID is valid, the job pointer is returned.
-    /// Otherwise, a user error is returned.
     async fn fetch_job(&self, id: i64) -> StoreResult<osprei::JobPointer>;
 
-    /// Fetches the job description for a given job ID, if available.
-    ///
-    /// On job registration, no attempt is made to fetch the job description.
-    /// This approach aims to enhance the agility of the registration process.
-    /// The primary goal of this store is to provide job definitions for each
-    /// execution, enabling better traceability of each execution.
-    ///
-    /// # Arguments
-    ///
-    /// * `id` - The ID of the job for which the job description is fetched.
-    ///
-    /// # Returns
-    ///
-    /// Returns the job description wrapped in a `StoreResult`.
-    /// If the job description is available, it is returned.
-    /// Otherwise, a store error is returned.
-    async fn fetch_job_description(&self, id: i64) -> StoreResult<osprei::Job>;
-
-    /// Creates an execution for a given job.
-    ///
-    /// # Arguments
-    ///
-    /// * `job_id` - The ID of the job for which the execution is created.
-    ///
-    /// # Returns
-    ///
-    /// Returns the ID of the newly created execution wrapped in a
-    /// `StoreResult`. If the requested job ID is valid, the execution is
-    /// created and its ID is returned. Otherwise, a user error is returned.
     async fn create_execution(&self, job_id: i64) -> StoreResult<i64>;
 
-    /// Sets the status of an execution to the specified status.
-    ///
-    /// # Arguments
-    ///
-    /// * `id` - The ID of the execution whose status is being set.
-    /// * `execution_status` - The status to set for the execution.
-    ///
-    /// # Returns
-    ///
-    /// Returns a `StoreResult` indicating the success of the operation.
-    /// If the execution with the specified ID exists, its status is updated to
-    /// the specified status. Otherwise, a user error is returned.
     async fn set_execution_status(
         &self,
         id: i64,
         execution_status: osprei::ExecutionStatus,
     ) -> StoreResult<()>;
 
-    /// Fetches the execution with the specified ID.
-    ///
-    /// # Arguments
-    ///
-    /// * `id` - The ID of the execution to fetch.
-    ///
-    /// # Returns
-    ///
-    /// Returns an `osprei::ExecutionDetails` wrapped in a `StoreResult`.
-    /// If the requested ID is valid, the execution details are returned.
-    /// Otherwise, a user error is returned.
     async fn get_execution(&self, id: i64) -> StoreResult<osprei::ExecutionDetails>;
 
-    /// Fetches the last `limit` executions of the job with the specified ID.
-    ///
-    /// # Arguments
-    ///
-    /// * `job_id` - The ID of the job for which to fetch the last executions.
-    /// * `limit` - The maximum number of executions to fetch.
-    ///
-    /// # Returns
-    ///
-    /// Returns a `StoreResult` containing a vector of `ExecutionSummary` for
-    /// the last executions. If the job ID is invalid or the limit is zero,
-    /// negative, or too large, a user error is returned. Otherwise, the
-    /// vector of execution summaries is returned.
-    async fn last_executions(
-        &self,
-        job_id: i64,
-        limit: usize,
-    ) -> StoreResult<Vec<osprei::ExecutionSummary>>;
-
-    /// Creates a daily schedule for the requested job ID at the specified hour
-    /// and minute.
-    ///
-    /// # Arguments
-    ///
-    /// * `job_id` - The ID of the job for which to create a daily schedule.
-    /// * `request` - The schedule request containing the desired hour and
-    ///   minute.
-    ///
-    /// # Returns
-    ///
-    /// Returns a `StoreResult` indicating the success of the operation.
-    /// If the job ID is invalid, a `StorageError::UserError` is returned.
-    /// On success, the ID of the created schedule is returned.
     async fn create_daily(&self, job_id: i64, request: osprei::ScheduleRequest)
         -> StoreResult<i64>;
 
-    /// Gets all the schedules for a particular job ID.
-    ///
-    /// # Arguments
-    ///
-    /// * `job_id` - The ID of the job for which to get the schedules.
-    ///
-    /// # Returns
-    ///
-    /// Returns a `StoreResult` containing a vector of schedules.
-    /// If the job ID is invalid, a `StorageError::UserError` is returned.
-    /// Otherwise, the vector of schedules is returned.
-    async fn get_schedules(&self, job_id: i64) -> StoreResult<Vec<osprei::Schedule>>;
-
-    /// Gets all the schedules for all jobs.
-    ///
-    /// # Returns
-    ///
-    /// Returns a `StoreResult` containing a vector of schedules.
-    /// If the operation encounters an error, a store error is returned.
-    /// Otherwise, the vector of schedules is returned.
     async fn get_all_schedules(&self) -> StoreResult<Vec<osprei::Schedule>>;
-
-    /// Gets the last execution if it exists for the specified job ID.
-    ///
-    /// # Arguments
-    ///
-    /// * `job_id` - The ID of the job for which to retrieve the last execution.
-    ///
-    /// # Returns
-    ///
-    /// Returns a `StoreResult` containing the latest execution if present. If
-    /// the requested job does not exist, a `StorageError::UserError` is
-    /// returned. If the job has been executed, its last execution is
-    /// returned; otherwise, `None` is returned.
-    async fn get_last_execution(&self, job_id: i64) -> StoreResult<Option<osprei::LastExecution>>;
 }
 
 #[derive(Debug)]
@@ -248,18 +100,6 @@ mod test {
         assert_eq!(job.path, path);
     }
 
-    pub async fn created_execution_added_to_job(storage: impl super::Storage) {
-        let name = String::from("test_job_name");
-        let source = String::from("https://github.com/musergi/osprei.git");
-        let path = String::from(".ci/test.json");
-        let job_id = storage.store_job(name, source, path).await.unwrap();
-        let execution_id = storage.create_execution(job_id).await.unwrap();
-        let executions = storage.last_executions(job_id, 10).await.unwrap();
-        assert!(executions
-            .into_iter()
-            .any(|summary| summary.id == execution_id))
-    }
-
     pub async fn inserted_executions_dont_have_status(storage: impl super::Storage) {
         let name = String::from("test_job_name");
         let source = String::from("https://github.com/musergi/osprei.git");
@@ -294,23 +134,6 @@ mod test {
             execution.status,
             Some(osprei::ExecutionStatus::Success)
         ));
-    }
-
-    pub async fn last_execution_details(storage: impl super::Storage) {
-        let name = String::from("test_job_name");
-        let source = String::from("https://github.com/musergi/osprei.git");
-        let path = String::from(".ci/test.json");
-        let job_id = storage.store_job(name, source, path).await.unwrap();
-        let last_execution = storage.get_last_execution(job_id).await.unwrap();
-        assert!(last_execution.is_none());
-        let execution_id = storage.create_execution(job_id).await.unwrap();
-        storage
-            .set_execution_status(execution_id, osprei::ExecutionStatus::Failed)
-            .await
-            .unwrap();
-        let last_execution = storage.get_last_execution(job_id).await.unwrap().unwrap();
-        assert_eq!(last_execution.id, execution_id);
-        assert_eq!(last_execution.status, Some(osprei::ExecutionStatus::Failed));
     }
 
     pub async fn when_job_not_executed_last_execution_empty(storage: impl super::Storage) {
@@ -424,10 +247,8 @@ mod test {
                 use crate::persistance::test;
 
                 add_persistance_test!(get_back_job_when_using_retruned_id, $init);
-                add_persistance_test!(created_execution_added_to_job, $init);
                 add_persistance_test!(inserted_executions_dont_have_status, $init);
                 add_persistance_test!(status_properly_saved, $init);
-                add_persistance_test!(last_execution_details, $init);
 
                 add_persistance_test!(when_job_added_listing_increases, $init);
                 add_persistance_test!(when_job_not_executed_last_execution_empty, $init);

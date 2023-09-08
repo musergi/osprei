@@ -1,5 +1,5 @@
 use log::error;
-use osprei::{ExecutionDetails, ExecutionSummary, JobPointer};
+use osprei::{ExecutionDetails, JobPointer};
 use sqlx::Row;
 
 use super::{Storage, StorageError, StoreResult};
@@ -152,10 +152,6 @@ impl Storage for DatabasePersistance {
             .ok_or_else(|| StorageError::UserError(String::from("Invalid job id")))
     }
 
-    async fn fetch_job_description(&self, _id: i64) -> StoreResult<osprei::Job> {
-        todo!()
-    }
-
     async fn create_execution(&self, job_id: i64) -> StoreResult<i64> {
         let mut conn = self.pool.acquire().await?;
         let id = sqlx::query(
@@ -201,26 +197,6 @@ impl Storage for DatabasePersistance {
             }).ok_or_else(|| StorageError::UserError(String::from("Invalid execution id")))
     }
 
-    async fn last_executions(
-        &self,
-        job_id: i64,
-        limit: usize,
-    ) -> StoreResult<Vec<osprei::ExecutionSummary>> {
-        let mut conn = self.pool.acquire().await?;
-        let executions = sqlx::query("SELECT id, start_time FROM executions WHERE job_id = $1 ORDER BY start_time DESC LIMIT $2")
-            .bind(job_id)
-            .bind(limit as i64)
-            .fetch_all(&mut conn)
-            .await?
-            .into_iter()
-            .map(|row| ExecutionSummary {
-                id: row.get(0),
-                start_time: row.get(1)
-            })
-            .collect();
-        Ok(executions)
-    }
-
     async fn create_daily(
         &self,
         job_id: i64,
@@ -238,24 +214,6 @@ impl Storage for DatabasePersistance {
         Ok(id)
     }
 
-    async fn get_schedules(&self, job_id: i64) -> StoreResult<Vec<osprei::Schedule>> {
-        let mut conn = self.pool.acquire().await?;
-        let schedules =
-            sqlx::query("SELECT id, job_id, hour, minute FROM schedules WHERE job_id = $1")
-                .bind(job_id)
-                .fetch_all(&mut conn)
-                .await?
-                .into_iter()
-                .map(|row| osprei::Schedule {
-                    schedule_id: row.get(0),
-                    job_id: row.get(1),
-                    hour: row.get(2),
-                    minute: row.get(3),
-                })
-                .collect();
-        Ok(schedules)
-    }
-
     async fn get_all_schedules(&self) -> StoreResult<Vec<osprei::Schedule>> {
         let mut conn = self.pool.acquire().await?;
         let schedules = sqlx::query("SELECT id, job_id, hour, minute FROM schedules")
@@ -270,24 +228,6 @@ impl Storage for DatabasePersistance {
             })
             .collect();
         Ok(schedules)
-    }
-
-    async fn get_last_execution(&self, _job_id: i64) -> StoreResult<Option<osprei::LastExecution>> {
-        let mut conn = self.pool.acquire().await?;
-        let schedule = sqlx::query("SELECT id, start_time, status FROM executions WHERE job_id = $1 ORDER BY start_time DESC LIMIT 1")
-            .bind(_job_id)
-            .fetch_optional(&mut conn)
-            .await?
-            .map(|row| {
-                let status_encoded: Option<i64> = row.get(2);
-                let status = status_encoded.map(osprei::ExecutionStatus::from);
-                osprei::LastExecution{
-                    id: row.get(0),
-                    start_time: row.get(1),
-                    status
-                }
-            });
-        Ok(schedule)
     }
 }
 

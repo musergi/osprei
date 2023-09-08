@@ -31,17 +31,6 @@ pub async fn post_job(
     reply(job_id)
 }
 
-pub async fn get_last_job_execution(
-    job_id: i64,
-    job_store: Box<dyn Storage>,
-) -> Result<impl warp::Reply, Infallible> {
-    let execution = job_store
-        .get_last_execution(job_id)
-        .await
-        .map(|last| LastExecutionResponse { last });
-    reply(execution)
-}
-
 pub async fn get_job_run(
     job_id: i64,
     path_builder: PathBuilder,
@@ -85,28 +74,12 @@ async fn run_job(
     Ok(execution_id)
 }
 
-pub async fn get_job_executions(
-    job_id: i64,
-    store: Box<dyn Storage>,
-) -> Result<impl warp::Reply, Infallible> {
-    let executions = store.last_executions(job_id, 10).await;
-    reply(executions)
-}
-
 pub async fn get_execution(
     execution_id: i64,
     store: Box<dyn Storage>,
 ) -> Result<impl warp::Reply, Infallible> {
     let execution = store.get_execution(execution_id).await;
     reply(execution)
-}
-
-pub async fn get_job_schedule(
-    job_id: i64,
-    store: Box<dyn Storage>,
-) -> Result<impl warp::Reply, Infallible> {
-    let schedules = store.get_schedules(job_id).await;
-    reply(schedules)
 }
 
 pub async fn post_job_schedule(
