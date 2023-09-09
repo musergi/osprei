@@ -27,6 +27,8 @@ struct Execution {
     job_id: i64,
     start_time: u64,
     status: Option<osprei::ExecutionStatus>,
+    stdout: Option<String>,
+    stderr: Option<String>,
 }
 
 fn timestamp_str(secs_since_epoch: u64) -> String {
@@ -109,6 +111,8 @@ impl Storage for MemoryStore {
             job_id,
             start_time,
             status: None,
+            stdout: None,
+            stderr: None,
         };
         data.executions.insert(id, new_execution);
         Ok(id)
@@ -128,6 +132,24 @@ impl Storage for MemoryStore {
         Ok(())
     }
 
+    async fn set_execution_result(
+        &self,
+        id: i64,
+        stdout: String,
+        stderr: String,
+        execution_status: osprei::ExecutionStatus,
+    ) -> StoreResult<()> {
+        let mut data = self.data.lock().await;
+        let execution = data
+            .executions
+            .get_mut(&id)
+            .ok_or_else(|| StorageError::UserError(String::from("Invalid excution id")))?;
+        execution.status = Some(execution_status);
+        execution.stdout = Some(stdout);
+        execution.stderr = Some(stderr);
+        Ok(())
+    }
+
     async fn get_execution(&self, id: i64) -> StoreResult<osprei::ExecutionDetails> {
         let data = self.data.lock().await;
         let Execution {
@@ -135,6 +157,8 @@ impl Storage for MemoryStore {
             job_id,
             start_time,
             status,
+            stdout,
+            stderr,
         } = data
             .executions
             .get(&id)
@@ -146,11 +170,15 @@ impl Storage for MemoryStore {
         let job_name = name.clone();
         let start_time = timestamp_str(*start_time);
         let status = *status;
+        let stdout = stdout.clone();
+        let stderr = stderr.clone();
         let execution = ExecutionDetails {
             execution_id: *id,
             job_name,
             start_time,
             status,
+            stdout,
+            stderr,
         };
         Ok(execution)
     }

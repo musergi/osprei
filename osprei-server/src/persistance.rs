@@ -20,6 +20,14 @@ pub trait Storage: Send + Sync + 'static {
         execution_status: osprei::ExecutionStatus,
     ) -> StoreResult<()>;
 
+    async fn set_execution_result(
+        &self,
+        id: i64,
+        stdout: String,
+        stderr: String,
+        execution_status: osprei::ExecutionStatus,
+    ) -> StoreResult<()>;
+
     async fn get_execution(&self, id: i64) -> StoreResult<osprei::ExecutionDetails>;
 
     async fn create_daily(&self, job_id: i64, request: osprei::ScheduleRequest)

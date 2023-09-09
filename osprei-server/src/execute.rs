@@ -6,8 +6,6 @@ use std::collections::HashMap;
 pub struct JobDescriptor {
     /// Clone directory for the source repo
     pub execution_dir: String,
-    /// Dump directory for this execution output
-    pub result_dir: String,
     /// Git repository to clone
     pub source: String,
     /// Path within the repository of the job definition
@@ -15,20 +13,23 @@ pub struct JobDescriptor {
 }
 
 impl JobDescriptor {
-    pub async fn execute_job(self) -> Result<Vec<StageExecutionSummary>, ExecutionError> {
+    pub async fn execute_job(
+        self,
+    ) -> Result<(osprei::ExecutionStatus, String, String), ExecutionError> {
         let JobDescriptor {
             execution_dir,
-            result_dir,
             source,
             path,
         } = self;
         if tokio::fs::remove_dir_all(&execution_dir).await.is_ok() {
             info!("Clean up directory: {}", execution_dir);
         }
-        let output_writer = OutputWriter::new(result_dir).await?;
-        let mut output_builder = OutputBuilder::new(output_writer);
-        checkout_repo(&mut output_builder, &execution_dir, &source).await?;
-        if output_builder.last_stage_successful() {
+        let StageResult {
+            mut status,
+            mut stdout,
+            mut stderr,
+        } = checkout_repo(&execution_dir, &source).await?;
+        if status == osprei::ExecutionStatus::Success {
             info!("Code checkout complete for: {}", source);
             let definition_path = joined(&execution_dir, &path);
             let job_definition = read_job_definition(definition_path).await?;
@@ -36,13 +37,48 @@ impl JobDescriptor {
             let stage_executor = StageExecutor::new(&execution_dir);
             for stage in job_definition.stages {
                 debug!("Running stage: {:?}", stage);
-                stage_executor.execute(stage, &mut output_builder).await?;
-                if !output_builder.last_stage_successful() {
-                    break;
-                }
+                let result = stage_executor.execute(stage).await?;
+                status = result.status;
+                stdout += &result.stdout;
+                stderr += &result.stderr;
             }
         }
-        Ok(output_builder.build())
+        Ok((status, stdout, stderr))
+    }
+}
+
+#[derive(Debug, Clone)]
+struct StageResult {
+    status: osprei::ExecutionStatus,
+    stdout: String,
+    stderr: String,
+}
+
+impl StageResult {
+    fn convert_output(out: Vec<u8>) -> Result<String, ExecutionError> {
+        String::from_utf8(out).map_err(|err| ExecutionError::StringConversionError(err))
+    }
+}
+
+impl TryFrom<std::process::Output> for StageResult {
+    type Error = ExecutionError;
+
+    fn try_from(
+        std::process::Output {
+            status,
+            stdout,
+            stderr,
+        }: std::process::Output,
+    ) -> Result<Self, Self::Error> {
+        let status = match status.code() {
+            Some(0) => osprei::ExecutionStatus::Success,
+            _ => osprei::ExecutionStatus::Failed,
+        };
+        Ok(StageResult {
+            status,
+            stdout: Self::convert_output(stdout)?,
+            stderr: Self::convert_output(stderr)?,
+        })
     }
 }
 
@@ -55,11 +91,7 @@ impl<'a> StageExecutor<'a> {
         StageExecutor { working_dir }
     }
 
-    async fn execute(
-        &'a self,
-        stage: Stage,
-        output_builder: &mut OutputBuilder,
-    ) -> Result<(), ExecutionError> {
+    async fn execute(&'a self, stage: Stage) -> Result<StageResult, ExecutionError> {
         debug!("Running stage: {:?}", stage);
         let Stage {
             cmd,
@@ -85,16 +117,11 @@ impl<'a> StageExecutor<'a> {
                 error!("Path: {}", path);
                 ExecutionError::SubProccess(err)
             })?;
-        output_builder.add(&output).await?;
-        Ok(())
+        StageResult::try_from(output)
     }
 }
 
-async fn checkout_repo(
-    output_builder: &mut OutputBuilder,
-    execution_dir: &str,
-    source: &str,
-) -> Result<(), ExecutionError> {
+async fn checkout_repo(execution_dir: &str, source: &str) -> Result<StageResult, ExecutionError> {
     let output = tokio::process::Command::new("git")
         .arg("clone")
         .arg(source)
@@ -102,8 +129,7 @@ async fn checkout_repo(
         .output()
         .await
         .map_err(ExecutionError::SubProccess)?;
-    output_builder.add(&output).await?;
-    Ok(())
+    StageResult::try_from(output)
 }
 
 async fn read_job_definition(path: String) -> Result<Job, ExecutionError> {
@@ -119,41 +145,6 @@ fn joined(base: &str, suffix: &str) -> String {
         .join(suffix)
         .to_string_lossy()
         .to_string()
-}
-
-struct OutputBuilder {
-    outputs: Vec<StageExecutionSummary>,
-    output_writer: OutputWriter,
-}
-
-impl OutputBuilder {
-    fn new(output_writer: OutputWriter) -> Self {
-        OutputBuilder {
-            outputs: Vec::new(),
-            output_writer,
-        }
-    }
-
-    fn last_stage_successful(&self) -> bool {
-        self.outputs
-            .last()
-            .map(|summary| summary.status == 0)
-            .unwrap_or(true)
-    }
-
-    async fn add(&mut self, output: &std::process::Output) -> Result<(), OutputWriteError> {
-        let logs = self.output_writer.write(output).await?;
-        let summary = StageExecutionSummary {
-            status: output.status.code().unwrap_or(-1),
-            logs,
-        };
-        self.outputs.push(summary);
-        Ok(())
-    }
-
-    fn build(self) -> Vec<StageExecutionSummary> {
-        self.outputs
-    }
 }
 
 pub async fn write_result(
@@ -243,13 +234,17 @@ pub async fn schedule_job(
                         Ok(execution_id) => {
                             let descriptor = JobDescriptor {
                                 execution_dir: path_builder.workspace(&name),
-                                result_dir: path_builder.results(&name, execution_id),
                                 source: source.clone(),
                                 path: path.clone(),
                             };
                             match descriptor.execute_job().await {
-                                Ok(outputs) => {
-                                    write_result(execution_id, &outputs, store.as_ref()).await;
+                                Ok((status, stdout, stderr)) => {
+                                    if let Err(err) = store
+                                        .set_execution_result(execution_id, stdout, stderr, status)
+                                        .await
+                                    {
+                                        error!("An error occured storing execution result: {}", err)
+                                    }
                                 }
                                 Err(err) => {
                                     error!("An error occurred during job executions: {}", err)
@@ -320,6 +315,7 @@ pub enum ExecutionError {
     OutputWriteError(OutputWriteError),
     MissingDefinition { path: String, err: std::io::Error },
     DefinitionSyntaxError(serde_json::Error),
+    StringConversionError(std::string::FromUtf8Error),
 }
 
 impl From<OutputWriteError> for ExecutionError {
@@ -345,63 +341,14 @@ impl std::fmt::Display for ExecutionError {
             ExecutionError::DefinitionSyntaxError(err) => {
                 write!(f, "definition syntax error: {}", err)
             }
+            ExecutionError::StringConversionError(err) => {
+                write!(f, "failed to convert output to string: {}", err)
+            }
         }
     }
 }
 
 impl std::error::Error for ExecutionError {}
-
-struct OutputWriter {
-    result_dir: String,
-    counter: u32,
-}
-
-impl OutputWriter {
-    async fn new(result_dir: String) -> Result<Self, OutputWriteError> {
-        tokio::fs::create_dir_all(&result_dir)
-            .await
-            .map_err(|err| OutputWriteError(result_dir.clone(), err))?;
-        Ok(Self {
-            result_dir,
-            counter: 0,
-        })
-    }
-
-    async fn write(
-        &mut self,
-        output: &std::process::Output,
-    ) -> Result<osprei::WrittenResult, OutputWriteError> {
-        let stdout_path = self.write_stdout(&output.stdout).await?;
-        let stderr_path = self.write_stderr(&output.stderr).await?;
-        self.counter += 1;
-        Ok(osprei::WrittenResult {
-            stdout_path,
-            stderr_path,
-        })
-    }
-
-    async fn write_stdout(&self, stdout: impl AsRef<[u8]>) -> Result<String, OutputWriteError> {
-        let mut buf = std::path::PathBuf::from(&self.result_dir);
-        buf.push(format!("stdout{}.txt", self.counter));
-        let path = buf.to_string_lossy().into_owned();
-        tokio::fs::write(&path, stdout)
-            .await
-            .map_err(|err| OutputWriteError(path.clone(), err))?;
-        info!("Writen stdout to: {}", path);
-        Ok(path)
-    }
-
-    async fn write_stderr(&self, stderr: impl AsRef<[u8]>) -> Result<String, OutputWriteError> {
-        let mut buf = std::path::PathBuf::from(&self.result_dir);
-        buf.push(format!("stderr{}.txt", self.counter));
-        let path = buf.to_string_lossy().into_owned();
-        tokio::fs::write(&path, stderr)
-            .await
-            .map_err(|err| OutputWriteError(path.clone(), err))?;
-        info!("Written stderr to: {}", path);
-        Ok(path)
-    }
-}
 
 #[derive(Debug)]
 pub struct OutputWriteError(String, tokio::io::Error);

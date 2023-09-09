@@ -69,6 +69,8 @@ pub struct ExecutionDetails {
     pub job_name: String,
     pub start_time: String,
     pub status: Option<ExecutionStatus>,
+    pub stdout: Option<String>,
+    pub stderr: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize, serde::Serialize)]

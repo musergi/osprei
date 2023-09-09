@@ -44,6 +44,8 @@ impl DatabasePersistance {
                     job_id INTEGER,
                     start_time TIMESTAMP,
                     status INTEGER,
+                    stdout TEXT,
+                    stderr TEXT,
                     FOREIGN KEY (job_id) REFERENCES jobs(id)
                 )
             ",
@@ -179,22 +181,70 @@ impl Storage for DatabasePersistance {
         Ok(())
     }
 
+    async fn set_execution_result(
+        &self,
+        id: i64,
+        stdout: String,
+        stderr: String,
+        execution_status: osprei::ExecutionStatus,
+    ) -> StoreResult<()> {
+        let value: i64 = execution_status.into();
+        let mut conn = self.pool.acquire().await?;
+        sqlx::query(
+            "
+            UPDATE
+                executions
+            SET
+                status = $2,
+                stdout = $3,
+                stderr = $4
+            WHERE id = $1;
+            ",
+        )
+        .bind(id)
+        .bind(value)
+        .bind(stdout)
+        .bind(stderr)
+        .execute(&mut conn)
+        .await?;
+        Ok(())
+    }
+
     async fn get_execution(&self, id: i64) -> StoreResult<osprei::ExecutionDetails> {
         let mut conn = self.pool.acquire().await?;
-        sqlx::query("SELECT executions.id, jobs.name, start_time, status FROM executions JOIN jobs ON jobs.id = executions.job_id WHERE executions.id = $1")
-            .bind(id)
-            .fetch_optional(&mut conn)
-            .await?
-            .map(|row| {
-                let status_encoded: Option<i64> = row.get(3);
-                let status = status_encoded.map(osprei::ExecutionStatus::from);
-                ExecutionDetails {
-                    execution_id: row.get(0),
-                    job_name: row.get(1),
-                    start_time: row.get(2),
-                    status
-                }
-            }).ok_or_else(|| StorageError::UserError(String::from("Invalid execution id")))
+        sqlx::query(
+            "
+            SELECT
+                executions.id,
+                jobs.name,
+                start_time,
+                status,
+                stdout,
+                stderr
+            FROM
+                executions
+                JOIN jobs
+                    ON jobs.id = executions.job_id
+            WHERE
+                executions.id = $1
+            ",
+        )
+        .bind(id)
+        .fetch_optional(&mut conn)
+        .await?
+        .map(|row| {
+            let status_encoded: Option<i64> = row.get(3);
+            let status = status_encoded.map(osprei::ExecutionStatus::from);
+            ExecutionDetails {
+                execution_id: row.get(0),
+                job_name: row.get(1),
+                start_time: row.get(2),
+                status,
+                stdout: row.get(4),
+                stderr: row.get(5),
+            }
+        })
+        .ok_or_else(|| StorageError::UserError(String::from("Invalid execution id")))
     }
 
     async fn create_daily(

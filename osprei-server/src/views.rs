@@ -1,7 +1,7 @@
 use std::convert::Infallible;
 
 use log::error;
-use osprei::{JobCreationRequest, JobPointer, LastExecutionResponse};
+use osprei::{JobCreationRequest, JobPointer};
 
 use crate::{
     execute,
@@ -50,10 +50,8 @@ async fn run_job(
     } = store.fetch_job(job_id).await?;
     let execution_id = store.create_execution(job_id).await?;
     let execution_dir = path_builder.workspace(&name);
-    let result_dir = path_builder.results(&name, execution_id);
     let descriptor = execute::JobDescriptor {
         execution_dir,
-        result_dir,
         source,
         path,
     };
@@ -61,8 +59,13 @@ async fn run_job(
         let execution_id = execution_id;
         tokio::spawn(async move {
             match descriptor.execute_job().await {
-                Ok(outputs) => {
-                    execute::write_result(execution_id, &outputs, store.as_ref()).await;
+                Ok((status, stdout, stderr)) => {
+                    if let Err(err) = store
+                        .set_execution_result(execution_id, stdout, stderr, status)
+                        .await
+                    {
+                        error!("An error occured storing execution result: {}", err)
+                    }
                 }
                 Err(err) => {
                     error!("An error occurred during job executions: {}", err);
