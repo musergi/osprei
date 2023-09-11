@@ -3,6 +3,25 @@ use log::{debug, error, info, warn};
 use osprei::{EnvironmentDefinition, Job, Stage, StageExecutionSummary};
 use std::collections::HashMap;
 
+#[derive(Debug, Clone)]
+pub struct Report {
+    pub status: osprei::ExecutionStatus,
+    pub stdout: String,
+    pub stderr: String,
+}
+
+#[async_trait::async_trait]
+pub trait JobSystemInteface {
+    async fn cleanup(&self, checkout_path: &str);
+    async fn checkout_code(
+        &self,
+        checkout_path: &str,
+        source: &str,
+        path: &str,
+    ) -> Result<(Report, Job), Report>;
+    async fn execute_stage(&self, checkout_path: &str, stage: Stage) -> Report;
+}
+
 pub struct JobDescriptor {
     /// Clone directory for the source repo
     pub execution_dir: String,
@@ -44,6 +63,27 @@ impl JobDescriptor {
             }
         }
         Ok((status, stdout, stderr))
+    }
+
+    pub async fn execute_job_new(self, system: impl JobSystemInteface) -> Report {
+        let JobDescriptor {
+            execution_dir,
+            source,
+            path,
+        } = self;
+        system.cleanup(&execution_dir).await;
+        let report = match system.checkout_code(&execution_dir, &source, &path).await {
+            Ok((report, job)) => {
+                for stage in job.stages {
+                    debug!("Running stage: {:?}", stage);
+                    system.execute_stage(&execution_dir, stage).await;
+                }
+                report
+            }
+            Err(report) => report,
+        };
+        system.cleanup(&execution_dir).await;
+        report
     }
 }
 
@@ -363,10 +403,158 @@ impl std::error::Error for OutputWriteError {}
 
 #[cfg(test)]
 mod test {
-    use super::create_interval;
+    use tokio::sync::mpsc;
+
+    use super::*;
 
     #[tokio::test]
     async fn test_interval_generation() {
         create_interval(12, 0).unwrap();
+    }
+
+    struct MessageSenderJobSystem {
+        checkout: Result<(Report, Job), Report>,
+        stage: Report,
+        tx: tokio::sync::mpsc::Sender<JobSystemMessage>,
+    }
+
+    #[derive(Debug, PartialEq)]
+    enum JobSystemMessage {
+        Checkout,
+        Cleanup,
+        Stage,
+    }
+
+    #[async_trait::async_trait]
+    impl JobSystemInteface for MessageSenderJobSystem {
+        async fn cleanup(&self, _checkout_path: &str) {
+            self.tx
+                .send(JobSystemMessage::Cleanup)
+                .await
+                .expect("coult not send cleanup message");
+        }
+
+        async fn checkout_code(
+            &self,
+            _checkout_path: &str,
+            _source: &str,
+            _path: &str,
+        ) -> Result<(Report, Job), Report> {
+            self.tx
+                .send(JobSystemMessage::Checkout)
+                .await
+                .expect("could not send checkout message");
+            self.checkout.clone()
+        }
+
+        async fn execute_stage(&self, _checkout_path: &str, _stage: Stage) -> Report {
+            self.tx
+                .send(JobSystemMessage::Stage)
+                .await
+                .expect("could not send stage");
+            self.stage.clone()
+        }
+    }
+
+    fn setup() -> (
+        JobDescriptor,
+        MessageSenderJobSystem,
+        mpsc::Receiver<JobSystemMessage>,
+    ) {
+        let job_ptr = JobDescriptor {
+            execution_dir: "/var/osprei/test".to_string(),
+            source: "https://github.com/user/repo.git".to_string(),
+            path: "ci/test.json".to_string(),
+        };
+        let (tx, rx) = tokio::sync::mpsc::channel(100);
+        let report = Report {
+            status: osprei::ExecutionStatus::Success,
+            stdout: "".to_string(),
+            stderr: "".to_string(),
+        };
+        let job = osprei::Job {
+            stages: vec![osprei::Stage {
+                cmd: String::default(),
+                args: Vec::new(),
+                env: Vec::new(),
+                path: String::default(),
+            }],
+        };
+        let checkout = Ok((report, job));
+        let stage = Report {
+            status: osprei::ExecutionStatus::Success,
+            stdout: "".to_string(),
+            stderr: "".to_string(),
+        };
+        let system = MessageSenderJobSystem {
+            checkout,
+            stage,
+            tx,
+        };
+        (job_ptr, system, rx)
+    }
+
+    #[tokio::test]
+    async fn when_checkout_fails_then_failure_is_returned() {
+        let (job_ptr, mut system, _rx) = setup();
+        system.checkout = Err(Report {
+            status: osprei::ExecutionStatus::Failed,
+            stdout: "".to_string(),
+            stderr: "".to_string(),
+        });
+        let report = job_ptr.execute_job_new(system).await;
+        assert_eq!(report.status, osprei::ExecutionStatus::Failed);
+    }
+
+    #[tokio::test]
+    async fn when_checkout_fails_then_cleanup_is_called() {
+        let (job_ptr, mut system, mut rx) = setup();
+        system.checkout = Err(Report {
+            status: osprei::ExecutionStatus::Failed,
+            stdout: "".to_string(),
+            stderr: "".to_string(),
+        });
+        let _report = job_ptr.execute_job_new(system).await;
+        assert_eq!(
+            rx.recv().await.expect("missing initial cleanup"),
+            JobSystemMessage::Cleanup
+        );
+        assert_eq!(
+            rx.recv().await.expect("missing checkout"),
+            JobSystemMessage::Checkout
+        );
+        assert_eq!(
+            rx.recv().await.expect("missing final cleanup"),
+            JobSystemMessage::Cleanup
+        );
+    }
+
+    #[tokio::test]
+    async fn when_checkout_succeeds_then_stage_is_executed() {
+        let (job_ptr, system, mut rx) = setup();
+        let _report = job_ptr.execute_job_new(system).await;
+        assert_eq!(
+            rx.recv().await.expect("missing initial cleanup"),
+            JobSystemMessage::Cleanup
+        );
+        assert_eq!(
+            rx.recv().await.expect("missing checkout"),
+            JobSystemMessage::Checkout
+        );
+        assert_eq!(
+            rx.recv().await.expect("missing stage execution"),
+            JobSystemMessage::Stage
+        );
+        assert_eq!(
+            rx.recv().await.expect("missing final cleanup"),
+            JobSystemMessage::Cleanup
+        );
+    }
+
+    #[tokio::test]
+    async fn when_checkout_and_stage_succeed_then_success_is_returned() {
+        let (job_ptr, system, _rx) = setup();
+        let report = job_ptr.execute_job_new(system).await;
+        assert_eq!(report.status, osprei::ExecutionStatus::Success);
     }
 }

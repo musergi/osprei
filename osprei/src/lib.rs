@@ -1,9 +1,9 @@
-#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
 pub struct Job {
     pub stages: Vec<Stage>,
 }
 
-#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
 pub struct Stage {
     /// Command to run
     pub cmd: String,
@@ -15,7 +15,7 @@ pub struct Stage {
     pub env: Vec<EnvironmentDefinition>,
 }
 
-#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
 pub struct EnvironmentDefinition {
     /// Name of the variable to set
     pub key: String,
