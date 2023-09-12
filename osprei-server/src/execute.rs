@@ -73,10 +73,13 @@ impl JobDescriptor {
         } = self;
         system.cleanup(&execution_dir).await;
         let report = match system.checkout_code(&execution_dir, &source, &path).await {
-            Ok((report, job)) => {
+            Ok((mut report, job)) => {
                 for stage in job.stages {
                     debug!("Running stage: {:?}", stage);
-                    system.execute_stage(&execution_dir, stage).await;
+                    report = system.execute_stage(&execution_dir, stage).await;
+                    if report.status != osprei::ExecutionStatus::Success {
+                        break;
+                    }
                 }
                 report
             }
@@ -494,6 +497,14 @@ mod test {
         (job_ptr, system, rx)
     }
 
+    async fn consume(mut rx: mpsc::Receiver<JobSystemMessage>) -> Vec<JobSystemMessage> {
+        let mut messages = Vec::new();
+        while let Some(message) = rx.recv().await {
+            messages.push(message);
+        }
+        messages
+    }
+
     #[tokio::test]
     async fn when_checkout_fails_then_failure_is_returned() {
         let (job_ptr, mut system, _rx) = setup();
@@ -508,46 +519,37 @@ mod test {
 
     #[tokio::test]
     async fn when_checkout_fails_then_cleanup_is_called() {
-        let (job_ptr, mut system, mut rx) = setup();
+        let (job_ptr, mut system, rx) = setup();
         system.checkout = Err(Report {
             status: osprei::ExecutionStatus::Failed,
             stdout: "".to_string(),
             stderr: "".to_string(),
         });
         let _report = job_ptr.execute_job_new(system).await;
+        let seq = consume(rx).await;
         assert_eq!(
-            rx.recv().await.expect("missing initial cleanup"),
-            JobSystemMessage::Cleanup
-        );
-        assert_eq!(
-            rx.recv().await.expect("missing checkout"),
-            JobSystemMessage::Checkout
-        );
-        assert_eq!(
-            rx.recv().await.expect("missing final cleanup"),
-            JobSystemMessage::Cleanup
+            seq,
+            vec![
+                JobSystemMessage::Cleanup,
+                JobSystemMessage::Checkout,
+                JobSystemMessage::Cleanup
+            ]
         );
     }
 
     #[tokio::test]
     async fn when_checkout_succeeds_then_stage_is_executed() {
-        let (job_ptr, system, mut rx) = setup();
+        let (job_ptr, system, rx) = setup();
         let _report = job_ptr.execute_job_new(system).await;
+        let seq = consume(rx).await;
         assert_eq!(
-            rx.recv().await.expect("missing initial cleanup"),
-            JobSystemMessage::Cleanup
-        );
-        assert_eq!(
-            rx.recv().await.expect("missing checkout"),
-            JobSystemMessage::Checkout
-        );
-        assert_eq!(
-            rx.recv().await.expect("missing stage execution"),
-            JobSystemMessage::Stage
-        );
-        assert_eq!(
-            rx.recv().await.expect("missing final cleanup"),
-            JobSystemMessage::Cleanup
+            seq,
+            vec![
+                JobSystemMessage::Cleanup,
+                JobSystemMessage::Checkout,
+                JobSystemMessage::Stage,
+                JobSystemMessage::Cleanup
+            ]
         );
     }
 
@@ -556,5 +558,68 @@ mod test {
         let (job_ptr, system, _rx) = setup();
         let report = job_ptr.execute_job_new(system).await;
         assert_eq!(report.status, osprei::ExecutionStatus::Success);
+    }
+
+    #[tokio::test]
+    async fn when_multiple_stage_then_all_are_executed() {
+        let (job_ptr, mut system, rx) = setup();
+        let checkout = system.checkout.as_mut().unwrap();
+        checkout.1.stages.push(Stage {
+            cmd: "".to_string(),
+            args: Vec::new(),
+            env: Vec::new(),
+            path: "".to_string(),
+        });
+        let _report = job_ptr.execute_job_new(system).await;
+        let seq = consume(rx).await;
+        assert_eq!(
+            seq,
+            vec![
+                JobSystemMessage::Cleanup,
+                JobSystemMessage::Checkout,
+                JobSystemMessage::Stage,
+                JobSystemMessage::Stage,
+                JobSystemMessage::Cleanup
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn when_multiple_stages_and_first_fails_short_circuit() {
+        let (job_ptr, mut system, rx) = setup();
+        let checkout = system.checkout.as_mut().unwrap();
+        checkout.1.stages.push(Stage {
+            cmd: "".to_string(),
+            args: Vec::new(),
+            env: Vec::new(),
+            path: "".to_string(),
+        });
+        system.stage.status = osprei::ExecutionStatus::Failed;
+        let _report = job_ptr.execute_job_new(system).await;
+        let seq = consume(rx).await;
+        assert_eq!(
+            seq,
+            vec![
+                JobSystemMessage::Cleanup,
+                JobSystemMessage::Checkout,
+                JobSystemMessage::Stage,
+                JobSystemMessage::Cleanup
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn when_multiple_stages_and_first_fails_then_failure_ir_returned() {
+        let (job_ptr, mut system, _rx) = setup();
+        let checkout = system.checkout.as_mut().unwrap();
+        checkout.1.stages.push(Stage {
+            cmd: "".to_string(),
+            args: Vec::new(),
+            env: Vec::new(),
+            path: "".to_string(),
+        });
+        system.stage.status = osprei::ExecutionStatus::Failed;
+        let report = job_ptr.execute_job_new(system).await;
+        assert_eq!(report.status, osprei::ExecutionStatus::Failed);
     }
 }
