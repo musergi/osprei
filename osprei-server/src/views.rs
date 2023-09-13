@@ -4,7 +4,7 @@ use log::error;
 use osprei::{JobCreationRequest, JobPointer};
 
 use crate::{
-    execute,
+    execute::{self, Report},
     persistance::{Storage, StorageError},
     PathBuilder,
 };
@@ -58,19 +58,16 @@ async fn run_job(
     {
         let execution_id = execution_id;
         tokio::spawn(async move {
-            match descriptor.execute_job().await {
-                Ok((status, stdout, stderr)) => {
-                    if let Err(err) = store
-                        .set_execution_result(execution_id, stdout, stderr, status)
-                        .await
-                    {
-                        error!("An error occured storing execution result: {}", err)
-                    }
-                }
-                Err(err) => {
-                    error!("An error occurred during job executions: {}", err);
-                    execute::write_error(execution_id, store.as_ref()).await;
-                }
+            let Report {
+                status,
+                stdout,
+                stderr,
+            } = descriptor.execute_job().await;
+            if let Err(err) = store
+                .set_execution_result(execution_id, stdout, stderr, status)
+                .await
+            {
+                error!("An error occured storing execution result: {}", err)
             }
         });
     }

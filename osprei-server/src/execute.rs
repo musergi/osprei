@@ -10,8 +10,29 @@ pub struct Report {
     pub stderr: String,
 }
 
+impl From<std::process::Output> for Report {
+    fn from(value: std::process::Output) -> Self {
+        let std::process::Output {
+            status,
+            stdout,
+            stderr,
+        } = value;
+        let status = match status.code() {
+            Some(0) => osprei::ExecutionStatus::Success,
+            _ => osprei::ExecutionStatus::Failed,
+        };
+        let stdout = String::from_utf8_lossy(&stdout).to_string();
+        let stderr = String::from_utf8_lossy(&stderr).to_string();
+        Self {
+            status,
+            stdout,
+            stderr,
+        }
+    }
+}
+
 #[async_trait::async_trait]
-pub trait JobSystemInteface {
+trait JobSystemInteface {
     async fn cleanup(&self, checkout_path: &str);
     async fn checkout_code(
         &self,
@@ -20,6 +41,82 @@ pub trait JobSystemInteface {
         path: &str,
     ) -> Result<(Report, Job), Report>;
     async fn execute_stage(&self, checkout_path: &str, stage: Stage) -> Report;
+}
+
+struct LocalJobSystem;
+
+#[async_trait::async_trait]
+impl JobSystemInteface for LocalJobSystem {
+    async fn cleanup(&self, checkout_path: &str) {
+        if tokio::fs::remove_dir_all(checkout_path).await.is_ok() {
+            info!("Clean up directory: {}", checkout_path);
+        }
+    }
+
+    async fn checkout_code(
+        &self,
+        checkout_path: &str,
+        source: &str,
+        path: &str,
+    ) -> Result<(Report, Job), Report> {
+        let output = tokio::process::Command::new("git")
+            .arg("clone")
+            .arg(source)
+            .arg(checkout_path)
+            .output()
+            .await
+            .map_err(|err| Report {
+                status: osprei::ExecutionStatus::InvalidConfig,
+                stdout: "".to_string(),
+                stderr: err.to_string(),
+            })?;
+        let mut report = Report::from(output);
+        let definition_path = joined(&checkout_path, &path);
+        match read_job_definition(definition_path).await {
+            Ok(job) => Ok((report, job)),
+            Err(err) => {
+                report.status = osprei::ExecutionStatus::InvalidConfig;
+                report.stderr += &err.to_string();
+                report.stderr += "\n";
+                Err(report)
+            }
+        }
+    }
+
+    async fn execute_stage(&self, checkout_path: &str, stage: Stage) -> Report {
+        debug!("Running stage: {:?}", stage);
+        let Stage {
+            cmd,
+            args,
+            path,
+            env,
+        } = stage;
+        let path = joined(checkout_path, &path);
+        let env: HashMap<_, _> = env
+            .into_iter()
+            .map(|EnvironmentDefinition { key, value }| (key, value))
+            .collect();
+        match tokio::process::Command::new(&cmd)
+            .args(&args)
+            .current_dir(&path)
+            .envs(env)
+            .output()
+            .await
+        {
+            Ok(output) => Report::from(output),
+            Err(err) => {
+                error!("Error occured when spawning suprocess, dumping details.");
+                error!("Command: {}", cmd);
+                error!("Arguments: {:?}", args);
+                error!("Path: {}", path);
+                Report {
+                    status: osprei::ExecutionStatus::InvalidConfig,
+                    stdout: "".to_string(),
+                    stderr: err.to_string(),
+                }
+            }
+        }
+    }
 }
 
 pub struct JobDescriptor {
@@ -32,40 +129,11 @@ pub struct JobDescriptor {
 }
 
 impl JobDescriptor {
-    pub async fn execute_job(
-        self,
-    ) -> Result<(osprei::ExecutionStatus, String, String), ExecutionError> {
-        let JobDescriptor {
-            execution_dir,
-            source,
-            path,
-        } = self;
-        if tokio::fs::remove_dir_all(&execution_dir).await.is_ok() {
-            info!("Clean up directory: {}", execution_dir);
-        }
-        let StageResult {
-            mut status,
-            mut stdout,
-            mut stderr,
-        } = checkout_repo(&execution_dir, &source).await?;
-        if status == osprei::ExecutionStatus::Success {
-            info!("Code checkout complete for: {}", source);
-            let definition_path = joined(&execution_dir, &path);
-            let job_definition = read_job_definition(definition_path).await?;
-            debug!("Read job definition: {:?}", job_definition);
-            let stage_executor = StageExecutor::new(&execution_dir);
-            for stage in job_definition.stages {
-                debug!("Running stage: {:?}", stage);
-                let result = stage_executor.execute(stage).await?;
-                status = result.status;
-                stdout += &result.stdout;
-                stderr += &result.stderr;
-            }
-        }
-        Ok((status, stdout, stderr))
+    pub async fn execute_job(self) -> Report {
+        self.execute_job_inner(LocalJobSystem).await
     }
 
-    pub async fn execute_job_new(self, system: impl JobSystemInteface) -> Report {
+    async fn execute_job_inner(self, system: impl JobSystemInteface) -> Report {
         let JobDescriptor {
             execution_dir,
             source,
@@ -91,91 +159,6 @@ impl JobDescriptor {
         system.cleanup(&execution_dir).await;
         report
     }
-}
-
-#[derive(Debug, Clone)]
-struct StageResult {
-    status: osprei::ExecutionStatus,
-    stdout: String,
-    stderr: String,
-}
-
-impl StageResult {
-    fn convert_output(out: Vec<u8>) -> Result<String, ExecutionError> {
-        String::from_utf8(out).map_err(|err| ExecutionError::StringConversionError(err))
-    }
-}
-
-impl TryFrom<std::process::Output> for StageResult {
-    type Error = ExecutionError;
-
-    fn try_from(
-        std::process::Output {
-            status,
-            stdout,
-            stderr,
-        }: std::process::Output,
-    ) -> Result<Self, Self::Error> {
-        let status = match status.code() {
-            Some(0) => osprei::ExecutionStatus::Success,
-            _ => osprei::ExecutionStatus::Failed,
-        };
-        Ok(StageResult {
-            status,
-            stdout: Self::convert_output(stdout)?,
-            stderr: Self::convert_output(stderr)?,
-        })
-    }
-}
-
-struct StageExecutor<'a> {
-    working_dir: &'a str,
-}
-
-impl<'a> StageExecutor<'a> {
-    fn new(working_dir: &'a str) -> StageExecutor<'a> {
-        StageExecutor { working_dir }
-    }
-
-    async fn execute(&'a self, stage: Stage) -> Result<StageResult, ExecutionError> {
-        debug!("Running stage: {:?}", stage);
-        let Stage {
-            cmd,
-            args,
-            path,
-            env,
-        } = stage;
-        let path = joined(self.working_dir, &path);
-        let env: HashMap<_, _> = env
-            .into_iter()
-            .map(|EnvironmentDefinition { key, value }| (key, value))
-            .collect();
-        let output = tokio::process::Command::new(&cmd)
-            .args(&args)
-            .current_dir(&path)
-            .envs(env)
-            .output()
-            .await
-            .map_err(|err| {
-                error!("Error occured when spawning suprocess, dumping details.");
-                error!("Command: {}", cmd);
-                error!("Arguments: {:?}", args);
-                error!("Path: {}", path);
-                ExecutionError::SubProccess(err)
-            })?;
-        StageResult::try_from(output)
-    }
-}
-
-async fn checkout_repo(execution_dir: &str, source: &str) -> Result<StageResult, ExecutionError> {
-    let output = tokio::process::Command::new("git")
-        .arg("clone")
-        .arg(source)
-        .arg(execution_dir)
-        .output()
-        .await
-        .map_err(ExecutionError::SubProccess)?;
-    StageResult::try_from(output)
 }
 
 async fn read_job_definition(path: String) -> Result<Job, ExecutionError> {
@@ -283,18 +266,16 @@ pub async fn schedule_job(
                                 source: source.clone(),
                                 path: path.clone(),
                             };
-                            match descriptor.execute_job().await {
-                                Ok((status, stdout, stderr)) => {
-                                    if let Err(err) = store
-                                        .set_execution_result(execution_id, stdout, stderr, status)
-                                        .await
-                                    {
-                                        error!("An error occured storing execution result: {}", err)
-                                    }
-                                }
-                                Err(err) => {
-                                    error!("An error occurred during job executions: {}", err)
-                                }
+                            let Report {
+                                status,
+                                stdout,
+                                stderr,
+                            } = descriptor.execute_job().await;
+                            if let Err(err) = store
+                                .set_execution_result(execution_id, stdout, stderr, status)
+                                .await
+                            {
+                                error!("An error occured storing execution result: {}", err)
                             }
                         }
                         Err(err) => error!("Error creating execution: {}", err),
@@ -516,7 +497,7 @@ mod test {
             stdout: "".to_string(),
             stderr: "".to_string(),
         });
-        let report = job_ptr.execute_job_new(system).await;
+        let report = job_ptr.execute_job_inner(system).await;
         assert_eq!(report.status, osprei::ExecutionStatus::Failed);
     }
 
@@ -528,7 +509,7 @@ mod test {
             stdout: "".to_string(),
             stderr: "".to_string(),
         });
-        let _report = job_ptr.execute_job_new(system).await;
+        let _report = job_ptr.execute_job_inner(system).await;
         let seq = consume(rx).await;
         assert_eq!(
             seq,
@@ -543,7 +524,7 @@ mod test {
     #[tokio::test]
     async fn when_checkout_succeeds_then_stage_is_executed() {
         let (job_ptr, system, rx) = setup();
-        let _report = job_ptr.execute_job_new(system).await;
+        let _report = job_ptr.execute_job_inner(system).await;
         let seq = consume(rx).await;
         assert_eq!(
             seq,
@@ -559,7 +540,7 @@ mod test {
     #[tokio::test]
     async fn when_checkout_and_stage_succeed_then_success_is_returned() {
         let (job_ptr, system, _rx) = setup();
-        let report = job_ptr.execute_job_new(system).await;
+        let report = job_ptr.execute_job_inner(system).await;
         assert_eq!(report.status, osprei::ExecutionStatus::Success);
     }
 
@@ -573,7 +554,7 @@ mod test {
             env: Vec::new(),
             path: "".to_string(),
         });
-        let _report = job_ptr.execute_job_new(system).await;
+        let _report = job_ptr.execute_job_inner(system).await;
         let seq = consume(rx).await;
         assert_eq!(
             seq,
@@ -598,7 +579,7 @@ mod test {
             path: "".to_string(),
         });
         system.stage.status = osprei::ExecutionStatus::Failed;
-        let _report = job_ptr.execute_job_new(system).await;
+        let _report = job_ptr.execute_job_inner(system).await;
         let seq = consume(rx).await;
         assert_eq!(
             seq,
@@ -622,7 +603,7 @@ mod test {
             path: "".to_string(),
         });
         system.stage.status = osprei::ExecutionStatus::Failed;
-        let report = job_ptr.execute_job_new(system).await;
+        let report = job_ptr.execute_job_inner(system).await;
         assert_eq!(report.status, osprei::ExecutionStatus::Failed);
     }
 
@@ -634,7 +615,7 @@ mod test {
         checkout.0.stderr = "A".to_string();
         system.stage.stdout = "b".to_string();
         system.stage.stderr = "B".to_string();
-        let report = job_ptr.execute_job_new(system).await;
+        let report = job_ptr.execute_job_inner(system).await;
         assert_eq!(report.stdout, "ab");
         assert_eq!(report.stderr, "AB");
     }
