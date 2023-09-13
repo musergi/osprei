@@ -279,6 +279,26 @@ impl Storage for DatabasePersistance {
             .collect();
         Ok(schedules)
     }
+
+    async fn get_stdout(&self, execution_id: i64) -> StoreResult<String> {
+        let mut conn = self.pool.acquire().await?;
+        let opt_stdout: Option<String> = sqlx::query("SELECT stdout FROM executions WHERE id = $1")
+            .bind(execution_id)
+            .fetch_one(&mut conn)
+            .await?
+            .get(0);
+        Ok(opt_stdout.unwrap_or_default())
+    }
+
+    async fn get_stderr(&self, execution_id: i64) -> StoreResult<String> {
+        let mut conn = self.pool.acquire().await?;
+        let opt_stderr: Option<String> = sqlx::query("SELECT stderr FROM executions WHERE id = $1")
+            .bind(execution_id)
+            .fetch_one(&mut conn)
+            .await?
+            .get(0);
+        Ok(opt_stderr.unwrap_or_default())
+    }
 }
 
 impl From<sqlx::Error> for StorageError {

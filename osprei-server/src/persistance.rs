@@ -34,6 +34,10 @@ pub trait Storage: Send + Sync + 'static {
         -> StoreResult<i64>;
 
     async fn get_all_schedules(&self) -> StoreResult<Vec<osprei::Schedule>>;
+
+    async fn get_stdout(&self, execution_id: i64) -> StoreResult<String>;
+
+    async fn get_stderr(&self, execution_id: i64) -> StoreResult<String>;
 }
 
 #[derive(Debug)]
@@ -235,6 +239,27 @@ mod test {
         assert_eq!(job_listing.len(), 2)
     }
 
+    pub async fn when_execution_log_stored_it_can_be_retrieved(storage: impl super::Storage) {
+        let name = String::from("test_job_name");
+        let source = String::from("https://github.com/musergi/osprei.git");
+        let path = String::from(".ci/test.json");
+        let id = storage.store_job(name, source, path).await.unwrap();
+        let stdout = "test stdout".to_string();
+        let stderr = "test stderr".to_string();
+        let execution_id = storage.create_execution(id).await.unwrap();
+        storage
+            .set_execution_result(
+                execution_id,
+                stdout.clone(),
+                stderr.clone(),
+                osprei::ExecutionStatus::Success,
+            )
+            .await
+            .unwrap();
+        assert_eq!(storage.get_stdout(execution_id).await.unwrap(), stdout);
+        assert_eq!(storage.get_stderr(execution_id).await.unwrap(), stderr);
+    }
+
     #[macro_export]
     macro_rules! add_persistance_test {
         ($test_name: ident, $init: expr) => {
@@ -264,6 +289,7 @@ mod test {
                 add_persistance_test!(when_job_executed_and_status_set_status_present, $init);
                 add_persistance_test!(when_job_executed_and_status_not_set_status_empty, $init);
                 add_persistance_test!(when_multiple_jobs_and_only_one_executed_all_lister, $init);
+                add_persistance_test!(when_execution_log_stored_it_can_be_retrieved, $init);
             }
         };
     }

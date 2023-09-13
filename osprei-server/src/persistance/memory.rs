@@ -209,6 +209,30 @@ impl Storage for MemoryStore {
         let schedules = data.schedules.values().cloned().collect();
         Ok(schedules)
     }
+
+    async fn get_stdout(&self, execution_id: i64) -> StoreResult<String> {
+        let data = self.data.lock().await;
+        let stdout = data
+            .executions
+            .get(&execution_id)
+            .ok_or_else(|| StorageError::UserError(String::from("Invalid execution id")))?
+            .stdout
+            .clone()
+            .unwrap_or("".to_string());
+        Ok(stdout)
+    }
+
+    async fn get_stderr(&self, execution_id: i64) -> StoreResult<String> {
+        let data = self.data.lock().await;
+        let stderr = data
+            .executions
+            .get(&execution_id)
+            .ok_or_else(|| StorageError::UserError(String::from("Invalid execution id")))?
+            .stderr
+            .clone()
+            .unwrap_or("".to_string());
+        Ok(stderr)
+    }
 }
 
 #[cfg(test)]
