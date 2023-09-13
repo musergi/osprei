@@ -76,7 +76,10 @@ impl JobDescriptor {
             Ok((mut report, job)) => {
                 for stage in job.stages {
                     debug!("Running stage: {:?}", stage);
-                    report = system.execute_stage(&execution_dir, stage).await;
+                    let stage_report = system.execute_stage(&execution_dir, stage).await;
+                    report.status = stage_report.status;
+                    report.stdout += &stage_report.stdout;
+                    report.stderr += &stage_report.stderr;
                     if report.status != osprei::ExecutionStatus::Success {
                         break;
                     }
@@ -621,5 +624,18 @@ mod test {
         system.stage.status = osprei::ExecutionStatus::Failed;
         let report = job_ptr.execute_job_new(system).await;
         assert_eq!(report.status, osprei::ExecutionStatus::Failed);
+    }
+
+    #[tokio::test]
+    async fn when_multiplt_stages_output_is_concatenation_of_outputs() {
+        let (job_ptr, mut system, _rx) = setup();
+        let checkout = system.checkout.as_mut().unwrap();
+        checkout.0.stdout = "a".to_string();
+        checkout.0.stderr = "A".to_string();
+        system.stage.stdout = "b".to_string();
+        system.stage.stderr = "B".to_string();
+        let report = job_ptr.execute_job_new(system).await;
+        assert_eq!(report.stdout, "ab");
+        assert_eq!(report.stderr, "AB");
     }
 }
