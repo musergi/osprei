@@ -15,17 +15,22 @@ impl Client {
             last_execution,
         } in self.list_jobs().await
         {
-            let status = match last_execution {
-                Some(osprei::LastExecution { status, .. }) => match status {
-                    Some(osprei::ExecutionStatus::Success) => "Success",
-                    Some(osprei::ExecutionStatus::Failed) => "Failed",
-                    Some(osprei::ExecutionStatus::InvalidConfig) => "Invalid config",
-                    None => "Running",
+            let (execution_id, status) = match last_execution {
+                Some(osprei::LastExecution { id, status, .. }) => match status {
+                    Some(osprei::ExecutionStatus::Success) => (Some(id), "Success"),
+                    Some(osprei::ExecutionStatus::Failed) => (Some(id), "Failed"),
+                    Some(osprei::ExecutionStatus::InvalidConfig) => (Some(id), "Invalid config"),
+                    None => (Some(id), "Running"),
                 },
-                None => "Not executed",
-            }
-            .to_string();
-            lines.push(JobLine { id, name, status });
+                None => (None, "Not executed"),
+            };
+            let status = status.to_string();
+            lines.push(JobLine {
+                id,
+                name,
+                execution_id,
+                status,
+            });
         }
         lines
     }
@@ -40,6 +45,7 @@ impl Client {
 pub struct JobLine {
     pub id: i64,
     pub name: String,
+    pub execution_id: Option<i64>,
     pub status: String,
 }
 
@@ -57,9 +63,18 @@ impl Handler {
         if jobs.is_empty() {
             println!("No jobs yet, try adding a job.");
         } else {
-            for JobLine { id, name, status } in jobs {
+            for JobLine {
+                id,
+                name,
+                execution_id,
+                status,
+            } in jobs
+            {
                 println!("- id: {}", id);
                 println!("  name: {}", name);
+                if let Some(execution_id) = execution_id {
+                    println!("  execution_id: {}", execution_id);
+                }
                 println!("  status: {}", status);
             }
         }
