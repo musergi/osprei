@@ -276,8 +276,8 @@ mod test {
         ($init: expr) => {
             mod storage {
                 use super::*;
-                use crate::add_persistance_test;
-                use crate::persistance::test;
+                use $crate::add_persistance_test;
+                use $crate::persistance::test;
 
                 add_persistance_test!(get_back_job_when_using_retruned_id, $init);
                 add_persistance_test!(inserted_executions_dont_have_status, $init);

@@ -64,7 +64,7 @@ impl Storage for MemoryStore {
                     },
                 );
             res.push(osprei::JobOverview {
-                id: id.clone(),
+                id: *id,
                 name: name.clone(),
                 last_execution,
             });

@@ -108,7 +108,7 @@ impl Storage for DatabasePersistance {
             let execution_id: Option<i64> = row.get(2);
             let start_time: Option<String> = row.get(3);
             let status: Option<i64> = row.get(4);
-            let status = status.map(&osprei::ExecutionStatus::from);
+            let status = status.map(osprei::ExecutionStatus::from);
             let last_execution = match (execution_id, start_time) {
                 (Some(id), Some(start_time)) => Some(osprei::LastExecution {
                     id,

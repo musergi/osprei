@@ -71,7 +71,7 @@ impl JobSystemInteface for LocalJobSystem {
                 stderr: err.to_string(),
             })?;
         let mut report = Report::from(output);
-        let definition_path = joined(&checkout_path, &path);
+        let definition_path = joined(checkout_path, path);
         match read_job_definition(definition_path).await {
             Ok(job) => Ok((report, job)),
             Err(err) => {
