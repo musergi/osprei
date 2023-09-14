@@ -106,6 +106,22 @@ pub async fn post_job_schedule(
     reply(id)
 }
 
+pub async fn get_stdout(
+    execution_id: i64,
+    store: Box<dyn Storage>,
+) -> Result<impl warp::Reply, Infallible> {
+    let stdout = store.get_stdout(execution_id).await;
+    reply(stdout)
+}
+
+pub async fn get_stderr(
+    execution_id: i64,
+    store: Box<dyn Storage>,
+) -> Result<impl warp::Reply, Infallible> {
+    let stderr = store.get_stderr(execution_id).await;
+    reply(stderr)
+}
+
 fn reply(
     reply: Result<impl serde::Serialize, StorageError>,
 ) -> Result<impl warp::Reply, Infallible> {

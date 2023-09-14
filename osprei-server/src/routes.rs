@@ -35,14 +35,24 @@ pub fn routes(
         .and(warp::post())
         .and(warp::body::json())
         .and(with_path_builder(path_builder))
-        .and(persistance::with(persistance))
+        .and(persistance::with(persistance.clone()))
         .and_then(views::post_job_schedule);
+    let get_stdout = warp::path!("execution" / i64 / "stdout")
+        .and(warp::get())
+        .and(persistance::with(persistance.clone()))
+        .and_then(views::get_stdout);
+    let get_stderr = warp::path!("execution" / i64 / "stderr")
+        .and(warp::get())
+        .and(persistance::with(persistance))
+        .and_then(views::get_stderr);
     get_jobs
         .or(get_job)
         .or(post_job)
         .or(get_job_run)
         .or(get_execution)
         .or(post_job_schedule)
+        .or(get_stdout)
+        .or(get_stderr)
 }
 
 fn with_path_builder(
