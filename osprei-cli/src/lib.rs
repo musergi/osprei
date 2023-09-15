@@ -40,6 +40,16 @@ impl Client {
         let response = reqwest::get(&url).await.unwrap().text().await.unwrap();
         serde_json::from_str(&response).unwrap()
     }
+
+    async fn get_log(&self, id: i64, stderr: bool) -> String {
+        let ext = match stderr {
+            true => "stderr",
+            false => "stdout",
+        };
+        let url = format!("{}/execution/{}/{}", self.url, id, ext);
+        let response = reqwest::get(&url).await.unwrap().text().await.unwrap();
+        serde_json::from_str(&response).unwrap()
+    }
 }
 
 pub struct JobLine {
@@ -78,5 +88,10 @@ impl Handler {
                 println!("  status: {}", status);
             }
         }
+    }
+
+    pub async fn handle_log(&self, execution_id: i64, stderr: bool) {
+        let log = self.client.get_log(execution_id, stderr).await;
+        println!("{}", log);
     }
 }

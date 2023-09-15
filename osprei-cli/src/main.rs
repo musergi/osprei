@@ -21,6 +21,7 @@ enum Commands {
     Run { job_id: i64 },
     Describe { job_id: i64 },
     Schedule(JobScheduleArgs),
+    Log(ExecutionLogArgs),
 }
 
 #[derive(Parser, Debug)]
@@ -43,6 +44,14 @@ struct JobScheduleArgs {
     minute: u8,
 }
 
+#[derive(Parser, Debug)]
+struct ExecutionLogArgs {
+    #[arg(long)]
+    id: i64,
+    #[arg(long)]
+    stderr: Option<bool>,
+}
+
 #[tokio::main]
 async fn main() {
     let Args { server, commands } = Args::parse();
@@ -54,6 +63,11 @@ async fn main() {
             let client = osprei_cli::Client::new(server);
             let handler = osprei_cli::Handler::new(client);
             handler.handle_list().await;
+        }
+        Commands::Log(ExecutionLogArgs { id, stderr }) => {
+            let client = osprei_cli::Client::new(server);
+            let handler = osprei_cli::Handler::new(client);
+            handler.handle_log(id, stderr.unwrap_or(false)).await;
         }
         Commands::Add(JobAddArgs { name, source, path }) => {
             let url = format!("{}/job", server);
