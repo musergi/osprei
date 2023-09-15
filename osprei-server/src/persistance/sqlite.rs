@@ -90,7 +90,7 @@ impl Storage for DatabasePersistance {
                     executions.id AS eid,
                     start_time,
                     status,
-                    row_number() OVER ( partition BY jobs.id ORDER BY start_time ) AS score
+                    row_number() OVER ( partition BY jobs.id ORDER BY start_time DESC, executions.id DESC) AS score
                 FROM (
                     jobs
                     LEFT JOIN executions

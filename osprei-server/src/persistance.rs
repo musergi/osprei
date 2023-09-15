@@ -260,6 +260,26 @@ mod test {
         assert_eq!(storage.get_stderr(execution_id).await.unwrap(), stderr);
     }
 
+    pub async fn when_job_executed_multiple_times_last_is_returned(storage: impl super::Storage) {
+        let name = String::from("test_job_name");
+        let source = String::from("https://github.com/musergi/osprei.git");
+        let path = String::from(".ci/test.json");
+        let id = storage.store_job(name, source, path).await.unwrap();
+        storage.create_execution(id).await.unwrap();
+        let second = storage.create_execution(id).await.unwrap();
+        let job_listing = storage.list_jobs_new().await.unwrap();
+        assert_eq!(
+            job_listing
+                .get(0)
+                .expect("no job found")
+                .last_execution
+                .as_ref()
+                .unwrap()
+                .id,
+            second
+        )
+    }
+
     #[macro_export]
     macro_rules! add_persistance_test {
         ($test_name: ident, $init: expr) => {
@@ -290,6 +310,7 @@ mod test {
                 add_persistance_test!(when_job_executed_and_status_not_set_status_empty, $init);
                 add_persistance_test!(when_multiple_jobs_and_only_one_executed_all_lister, $init);
                 add_persistance_test!(when_execution_log_stored_it_can_be_retrieved, $init);
+                add_persistance_test!(when_job_executed_multiple_times_last_is_returned, $init);
             }
         };
     }
