@@ -280,6 +280,38 @@ mod test {
         )
     }
 
+    pub async fn when_multiple_jobs_each_has_its_executions(storage: impl super::Storage) {
+        let name = String::from("test");
+        let source = String::from("https://github.com/musergi/osprei.git");
+        let path = String::from(".ci/test.json");
+        let first_id = storage.store_job(name, source.clone(), path).await.unwrap();
+
+        let name = String::from("format");
+        let path = String::from(".ci/format.json");
+        let second_id = storage.store_job(name, source, path).await.unwrap();
+
+        let execution_id = storage.create_execution(first_id).await.unwrap();
+        let job_listing = storage.list_jobs_new().await.unwrap();
+
+        assert_eq!(
+            job_listing
+                .iter()
+                .find(|job| job.id == first_id)
+                .unwrap()
+                .last_execution
+                .as_ref()
+                .unwrap()
+                .id,
+            execution_id
+        );
+        assert!(job_listing
+            .iter()
+            .find(|job| job.id == second_id)
+            .unwrap()
+            .last_execution
+            .is_none());
+    }
+
     #[macro_export]
     macro_rules! add_persistance_test {
         ($test_name: ident, $init: expr) => {
@@ -311,6 +343,7 @@ mod test {
                 add_persistance_test!(when_multiple_jobs_and_only_one_executed_all_lister, $init);
                 add_persistance_test!(when_execution_log_stored_it_can_be_retrieved, $init);
                 add_persistance_test!(when_job_executed_multiple_times_last_is_returned, $init);
+                add_persistance_test!(when_multiple_jobs_each_has_its_executions, $init);
             }
         };
     }

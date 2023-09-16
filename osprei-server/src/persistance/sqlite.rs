@@ -94,6 +94,7 @@ impl Storage for DatabasePersistance {
                 FROM (
                     jobs
                     LEFT JOIN executions
+                         ON (jobs.id = job_id)
                 )
             )
             WHERE  score = 1
