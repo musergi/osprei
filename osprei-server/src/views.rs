@@ -1,156 +1,196 @@
-use crate::execute;
-use crate::persistance;
-use crate::persistance::StorageError;
 use osprei::JobCreationRequest;
+use sqlx::Row;
 use std::convert::Infallible;
-use tokio::sync::mpsc;
-use tokio::sync::oneshot;
 
-pub async fn get_jobs(
-    persistance: mpsc::Sender<persistance::Message>,
-) -> Result<impl warp::Reply, Infallible> {
-    let (tx, rx) = oneshot::channel();
-    persistance
-        .send(persistance::Message::ListJobs(tx))
-        .await
-        .unwrap();
-    let jobs = rx.await.unwrap();
-    reply(jobs)
+pub async fn get_jobs(pool: sqlx::SqlitePool) -> Result<impl warp::Reply, Infallible> {
+    let mut conn = pool.acquire().await.unwrap();
+    let jobs: Vec<_> = sqlx::query(
+        "
+        SELECT 
+            jid,
+            name,
+            eid,
+            start_time,
+            status
+        FROM (
+            SELECT
+                jobs.id AS jid,
+                name,
+                executions.id AS eid,
+                start_time,
+                status,
+                row_number() OVER ( partition BY jobs.id ORDER BY start_time DESC, executions.id DESC) AS score
+            FROM (
+                jobs
+                LEFT JOIN executions
+                     ON (jobs.id = job_id)
+            )
+        )
+        WHERE  score = 1
+        ",
+    )
+    .fetch_all(&mut conn)
+    .await
+    .unwrap()
+    .into_iter()
+    .map(|row| {
+        let id: i64 = row.get(0);
+        let name: String = row.get(1);
+        let execution_id: Option<i64> = row.get(2);
+        let start_time: Option<String> = row.get(3);
+        let status: Option<i64> = row.get(4);
+        let status = status.map(osprei::ExecutionStatus::from);
+        let last_execution = match (execution_id, start_time) {
+            (Some(id), Some(start_time)) => Some(osprei::LastExecution {
+                id,
+                start_time,
+                status,
+            }),
+            _ => None,
+        };
+        osprei::JobOverview {
+            id,
+            name,
+            last_execution,
+        }
+    })
+    .collect();
+    Ok(warp::reply::json(&jobs))
 }
 
-pub async fn get_job(
-    job_id: i64,
-    persistance: mpsc::Sender<persistance::Message>,
-) -> Result<impl warp::Reply, Infallible> {
-    let (tx, rx) = oneshot::channel();
-    persistance
-        .send(persistance::Message::FetchJob(job_id, tx))
+pub async fn get_job(job_id: i64, pool: sqlx::SqlitePool) -> Result<impl warp::Reply, Infallible> {
+    let mut conn = pool.acquire().await.unwrap();
+    let pointer = sqlx::query("SELECT id, name, source, path FROM jobs WHERE id = $1")
+        .bind(job_id)
+        .fetch_optional(&mut conn)
         .await
+        .unwrap()
+        .map(|row| osprei::JobPointer {
+            id: row.get(0),
+            name: row.get(1),
+            source: row.get(2),
+            path: row.get(3),
+        })
         .unwrap();
-    let job_ptr = rx.await.unwrap();
-    reply(job_ptr)
+    Ok(warp::reply::json(&pointer))
 }
 
 pub async fn post_job(
     request: JobCreationRequest,
-    persistance: mpsc::Sender<persistance::Message>,
+    pool: sqlx::SqlitePool,
 ) -> Result<impl warp::Reply, Infallible> {
     let JobCreationRequest { name, source, path } = request;
-    let (tx, rx) = oneshot::channel();
-    persistance
-        .send(persistance::Message::StoreJob(
-            persistance::request::Job { name, source, path },
-            tx,
-        ))
+    let mut conn = pool.acquire().await.unwrap();
+    let id = sqlx::query("INSERT INTO jobs (name, source, path) VALUES ($1, $2, $3)")
+        .bind(name)
+        .bind(source)
+        .bind(path)
+        .execute(&mut conn)
         .await
-        .unwrap();
-    let job_id = rx.await.unwrap();
-    reply(job_id)
+        .unwrap()
+        .last_insert_rowid();
+    Ok(warp::reply::json(&id))
 }
 
 pub async fn get_job_run(
     job_id: i64,
-    engine: mpsc::Sender<execute::Message>,
+    pool: sqlx::SqlitePool,
 ) -> Result<impl warp::Reply, Infallible> {
-    let (tx, rx) = oneshot::channel();
-    engine
-        .send(execute::Message::Execute {
-            job_id,
-            response: tx,
-        })
-        .await
-        .unwrap();
-    let execution_id = rx.await.unwrap();
-    reply(Ok(execution_id))
+    let mut conn = pool.acquire().await.unwrap();
+    let id =
+        sqlx::query("INSERT INTO executions (job_id, start_time) VALUES ($1, CURRENT_TIMESTAMP)")
+            .bind(job_id)
+            .execute(&mut conn)
+            .await
+            .unwrap()
+            .last_insert_rowid();
+    Ok(warp::reply::json(&id))
 }
 
 pub async fn get_execution(
     execution_id: i64,
-    persistance: mpsc::Sender<persistance::Message>,
+    pool: sqlx::SqlitePool,
 ) -> Result<impl warp::Reply, Infallible> {
-    let (tx, rx) = oneshot::channel();
-    persistance
-        .send(persistance::Message::GetExecution(execution_id, tx))
-        .await
-        .unwrap();
-    let execution = rx.await.unwrap();
-    reply(execution)
+    let mut conn = pool.acquire().await.unwrap();
+    let execution = sqlx::query(
+        "
+            SELECT
+                executions.id,
+                jobs.name,
+                start_time,
+                status,
+                stdout,
+                stderr
+            FROM
+                executions
+                JOIN jobs
+                    ON jobs.id = executions.job_id
+            WHERE
+                executions.id = $1
+            ",
+    )
+    .bind(execution_id)
+    .fetch_optional(&mut conn)
+    .await
+    .unwrap()
+    .map(|row| {
+        let status_encoded: Option<i64> = row.get(3);
+        let status = status_encoded.map(osprei::ExecutionStatus::from);
+        osprei::ExecutionDetails {
+            execution_id: row.get(0),
+            job_name: row.get(1),
+            start_time: row.get(2),
+            status,
+            stdout: row.get(4),
+            stderr: row.get(5),
+        }
+    })
+    .unwrap();
+    Ok(warp::reply::json(&execution))
 }
 
 pub async fn post_job_schedule(
     job_id: i64,
     request: osprei::ScheduleRequest,
-    engine: mpsc::Sender<execute::Message>,
-) -> Result<impl warp::Reply, Infallible> {
-    let (tx, rx) = oneshot::channel();
+    pool: sqlx::SqlitePool,
+) -> Result<impl warp::Reply, warp::Rejection> {
     let osprei::ScheduleRequest { hour, minute } = request;
-    engine
-        .send(execute::Message::Schedule {
-            job_id,
-            hour,
-            minute,
-            response: tx,
-        })
+    let mut conn = pool.acquire().await.unwrap();
+    let id = sqlx::query("INSERT INTO schedules (job_id, hour, minute) VALUES ($1, $2, $3)")
+        .bind(job_id)
+        .bind(hour)
+        .bind(minute)
+        .execute(&mut conn)
         .await
-        .unwrap();
-    let id = rx.await.unwrap();
-    reply(id)
+        .unwrap()
+        .last_insert_rowid();
+    Ok(warp::reply::json(&id))
 }
 
 pub async fn get_stdout(
     execution_id: i64,
-    persistance: mpsc::Sender<persistance::Message>,
+    pool: sqlx::SqlitePool,
 ) -> Result<impl warp::Reply, Infallible> {
-    let (tx, rx) = oneshot::channel();
-    persistance
-        .send(persistance::Message::GetStdout(execution_id, tx))
+    let mut conn = pool.acquire().await.unwrap();
+    let opt_stdout: Option<String> = sqlx::query("SELECT stdout FROM executions WHERE id = $1")
+        .bind(execution_id)
+        .fetch_one(&mut conn)
         .await
-        .unwrap();
-    let stdout = rx.await.unwrap();
-    reply(stdout)
+        .unwrap()
+        .get(0);
+    Ok(warp::reply::json(&opt_stdout.unwrap_or_default()))
 }
 
 pub async fn get_stderr(
     execution_id: i64,
-    persistance: mpsc::Sender<persistance::Message>,
+    pool: sqlx::SqlitePool,
 ) -> Result<impl warp::Reply, Infallible> {
-    let (tx, rx) = oneshot::channel();
-    persistance
-        .send(persistance::Message::GetStdout(execution_id, tx))
+    let mut conn = pool.acquire().await.unwrap();
+    let opt_stderr: Option<String> = sqlx::query("SELECT stderr FROM executions WHERE id = $1")
+        .bind(execution_id)
+        .fetch_one(&mut conn)
         .await
-        .unwrap();
-    let stderr = rx.await.unwrap();
-    reply(stderr)
-}
-
-fn reply(
-    reply: Result<impl serde::Serialize, StorageError>,
-) -> Result<impl warp::Reply, Infallible> {
-    let (reply, status) = match reply {
-        Ok(reply) => (warp::reply::json(&reply), warp::http::StatusCode::OK),
-        Err(err) => {
-            let status = match err {
-                StorageError::UserError(_) => warp::http::StatusCode::NOT_FOUND,
-                StorageError::InternalError(_) => warp::http::StatusCode::INTERNAL_SERVER_ERROR,
-            };
-            let message: ApiError = err.into();
-            (warp::reply::json(&message), status)
-        }
-    };
-    Ok(warp::reply::with_status(reply, status))
-}
-
-#[derive(Debug, serde::Serialize)]
-pub struct ApiError {
-    message: String,
-}
-
-impl From<StorageError> for ApiError {
-    fn from(value: StorageError) -> Self {
-        let message = match value {
-            StorageError::UserError(err) => err,
-            StorageError::InternalError(_) => String::from("Internal error"),
-        };
-        ApiError { message }
-    }
+        .unwrap()
+        .get(0);
+    Ok(warp::reply::json(&opt_stderr.unwrap_or_default()))
 }

@@ -1,10 +1,13 @@
 use log::{error, warn};
 
 use clap::Parser;
-use osprei_server::config::Config;
-use osprei_server::routes::routes;
-use osprei_server::{execute, persistance};
+use config::Config;
+use routes::routes;
 use warp::Filter;
+
+mod config;
+mod routes;
+mod views;
 
 /// Osprei CI server
 #[derive(Parser, Debug)]
@@ -26,24 +29,11 @@ async fn main() {
             data_path,
             persistance,
         }) => {
-            let path_builder = osprei_server::PathBuilder::new(data_path);
-            let (persistance_channel, persistance) =
-                persistance::Persistance::new(persistance).await.unwrap();
-            tokio::spawn(async move {
-                persistance.serve().await;
-            });
-            build_workspace(path_builder.workspaces()).await;
-            let (engine_channel, engine) = execute::Server::new(
-                path_builder.workspaces().to_string(),
-                persistance_channel.clone(),
-            )
-            .await;
-            tokio::spawn(async move {
-                engine.serve().await;
-            });
+            let pool = create_database(&persistance).await.unwrap();
+            build_workspace(&format!("{}/workspaces", data_path)).await;
             warp::serve(
                 warp::any()
-                    .and(routes(persistance_channel, engine_channel))
+                    .and(routes(pool))
                     .with(cors())
                     .with(warp::log("api")),
             )
@@ -52,6 +42,59 @@ async fn main() {
         }
         Err(err) => error!("Config error: {}", err),
     };
+}
+
+async fn create_database(database_path: &str) -> Result<sqlx::sqlite::SqlitePool, sqlx::Error> {
+    let url = format!("{}?mode=rwc", database_path);
+    let pool = sqlx::sqlite::SqlitePool::connect(&url).await?;
+    let mut conn = pool.acquire().await?;
+    sqlx::query(
+        "
+            CREATE TABLE IF NOT EXISTS
+                jobs
+            (
+                id INTEGER PRIMARY KEY,
+                name TEXT,
+                source TEXT,
+                path TEXT
+            )
+        ",
+    )
+    .execute(&mut conn)
+    .await?;
+    sqlx::query(
+        "
+            CREATE TABLE IF NOT EXISTS
+                executions
+            (
+                id INTEGER PRIMARY KEY,
+                job_id INTEGER,
+                start_time TIMESTAMP,
+                status INTEGER,
+                stdout TEXT,
+                stderr TEXT,
+                FOREIGN KEY (job_id) REFERENCES jobs(id)
+            )
+        ",
+    )
+    .execute(&mut conn)
+    .await?;
+    sqlx::query(
+        "
+            CREATE TABLE IF NOT EXISTS
+                schedules
+            (
+                id INTEGER PRIMARY KEY,
+                job_id INTEGER,
+                hour INTEGER,
+                minute INTEGER,
+                FOREIGN KEY (job_id) REFERENCES jobs(id)
+            )
+        ",
+    )
+    .execute(&mut conn)
+    .await?;
+    Ok(pool)
 }
 
 fn cors() -> warp::cors::Builder {

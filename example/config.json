@@ -1,8 +1,5 @@
 {
   "address": "0.0.0.0:10000",
   "data_path": "/var/osprei",
-  "persistance":
-  {
-    "type": "Memory"
-  }
+  "persistance": ":memory:"
 }

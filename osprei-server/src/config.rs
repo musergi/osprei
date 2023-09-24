@@ -1,17 +1,16 @@
-use super::persistance::PersistanceConfig;
 use log::info;
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 struct SerializedConfig {
     address: String,
     data_path: String,
-    persistance: PersistanceConfig,
+    persistance: String,
 }
 
 pub struct Config {
     pub address: std::net::SocketAddr,
     pub data_path: String,
-    pub persistance: PersistanceConfig,
+    pub persistance: String,
 }
 
 impl Config {
