@@ -33,7 +33,7 @@ async fn main() {
                 persistance.serve().await;
             });
             build_workspace(path_builder.workspaces()).await;
-            let (engine_channel, engine) = execute::ExecutionEngine::new(
+            let (engine_channel, engine) = execute::Server::new(
                 path_builder.workspaces().to_string(),
                 persistance_channel.clone(),
             )
@@ -44,7 +44,8 @@ async fn main() {
             warp::serve(
                 warp::any()
                     .and(routes(persistance_channel, engine_channel))
-                    .with(cors()),
+                    .with(cors())
+                    .with(warp::log("api")),
             )
             .run(address)
             .await;

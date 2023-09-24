@@ -34,6 +34,37 @@ impl From<std::process::Output> for Report {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct Client {
+    tx: mpsc::Sender<Message>,
+}
+
+impl Client {
+    pub async fn execute(&self, job_id: i64) -> Result<i64, String> {
+        let (tx, rx) = oneshot::channel();
+        let message = Message::Execute {
+            job_id,
+            response: tx,
+        };
+        self.tx.send(message).await.unwrap();
+        rx.await
+            .unwrap()
+            .ok_or_else(|| "failed to assign execution id".to_string())
+    }
+
+    pub async fn create_schedule(&self, job_id: i64, hour: u8, minute: u8) -> Result<i64, String> {
+        let (tx, rx) = oneshot::channel();
+        let message = Message::Schedule {
+            job_id,
+            hour,
+            minute,
+            response: tx,
+        };
+        self.tx.send(message).await.unwrap();
+        rx.await.unwrap().map_err(|err| err.to_string())
+    }
+}
+
 #[derive(Debug)]
 pub enum Message {
     Execute {
@@ -48,14 +79,14 @@ pub enum Message {
     },
 }
 
-pub struct ExecutionEngine {
+pub struct Server {
     channel: mpsc::Receiver<Message>,
     sender: mpsc::Sender<Message>,
     persistance: mpsc::Sender<persistance::Message>,
     execution_dir: String,
 }
 
-impl ExecutionEngine {
+impl Server {
     pub async fn new(
         execution_dir: String,
         persistance: mpsc::Sender<persistance::Message>,
