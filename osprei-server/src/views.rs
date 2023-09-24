@@ -1,124 +1,125 @@
+use crate::execute;
+use crate::persistance;
+use crate::persistance::StorageError;
+use osprei::JobCreationRequest;
 use std::convert::Infallible;
+use tokio::sync::mpsc;
+use tokio::sync::oneshot;
 
-use log::error;
-use osprei::{JobCreationRequest, JobPointer};
-
-use crate::{
-    execute::{self, Report},
-    persistance::{Storage, StorageError},
-    PathBuilder,
-};
-
-pub async fn get_jobs(job_store: Box<dyn Storage>) -> Result<impl warp::Reply, Infallible> {
-    let jobs = job_store.list_jobs_new().await;
+pub async fn get_jobs(
+    persistance: mpsc::Sender<persistance::Message>,
+) -> Result<impl warp::Reply, Infallible> {
+    let (tx, rx) = oneshot::channel();
+    persistance
+        .send(persistance::Message::ListJobs(tx))
+        .await
+        .unwrap();
+    let jobs = rx.await.unwrap();
     reply(jobs)
 }
 
 pub async fn get_job(
     job_id: i64,
-    job_store: Box<dyn Storage>,
+    persistance: mpsc::Sender<persistance::Message>,
 ) -> Result<impl warp::Reply, Infallible> {
-    let job_ptr = job_store.fetch_job(job_id).await;
+    let (tx, rx) = oneshot::channel();
+    persistance
+        .send(persistance::Message::FetchJob(job_id, tx))
+        .await
+        .unwrap();
+    let job_ptr = rx.await.unwrap();
     reply(job_ptr)
 }
 
 pub async fn post_job(
     request: JobCreationRequest,
-    job_store: Box<dyn Storage>,
+    persistance: mpsc::Sender<persistance::Message>,
 ) -> Result<impl warp::Reply, Infallible> {
     let JobCreationRequest { name, source, path } = request;
-    let job_id = job_store.store_job(name, source, path).await;
+    let (tx, rx) = oneshot::channel();
+    persistance
+        .send(persistance::Message::StoreJob(
+            persistance::request::Job { name, source, path },
+            tx,
+        ))
+        .await
+        .unwrap();
+    let job_id = rx.await.unwrap();
     reply(job_id)
 }
 
 pub async fn get_job_run(
     job_id: i64,
-    path_builder: PathBuilder,
-    store: Box<dyn Storage>,
+    engine: mpsc::Sender<execute::Message>,
 ) -> Result<impl warp::Reply, Infallible> {
-    let execution_id = run_job(job_id, path_builder, store).await;
-    reply(execution_id)
-}
-
-async fn run_job(
-    job_id: i64,
-    path_builder: PathBuilder,
-    store: Box<dyn Storage>,
-) -> Result<impl serde::Serialize, StorageError> {
-    let JobPointer {
-        name, source, path, ..
-    } = store.fetch_job(job_id).await?;
-    let execution_id = store.create_execution(job_id).await?;
-    let execution_dir = path_builder.workspace(&name);
-    let descriptor = execute::JobDescriptor {
-        execution_dir,
-        source,
-        path,
-    };
-    {
-        let execution_id = execution_id;
-        tokio::spawn(async move {
-            let Report {
-                status,
-                stdout,
-                stderr,
-            } = descriptor.execute_job().await;
-            if let Err(err) = store
-                .set_execution_result(execution_id, stdout, stderr, status)
-                .await
-            {
-                error!("An error occured storing execution result: {}", err)
-            }
-        });
-    }
-    Ok(execution_id)
+    let (tx, rx) = oneshot::channel();
+    engine
+        .send(execute::Message::Execute {
+            job_id,
+            response: tx,
+        })
+        .await
+        .unwrap();
+    let execution_id = rx.await.unwrap();
+    reply(Ok(execution_id))
 }
 
 pub async fn get_execution(
     execution_id: i64,
-    store: Box<dyn Storage>,
+    persistance: mpsc::Sender<persistance::Message>,
 ) -> Result<impl warp::Reply, Infallible> {
-    let execution = store.get_execution(execution_id).await;
+    let (tx, rx) = oneshot::channel();
+    persistance
+        .send(persistance::Message::GetExecution(execution_id, tx))
+        .await
+        .unwrap();
+    let execution = rx.await.unwrap();
     reply(execution)
 }
 
 pub async fn post_job_schedule(
     job_id: i64,
     request: osprei::ScheduleRequest,
-    path_builder: PathBuilder,
-    store: Box<dyn Storage>,
+    engine: mpsc::Sender<execute::Message>,
 ) -> Result<impl warp::Reply, Infallible> {
-    let id = match store.create_daily(job_id, request.clone()).await {
-        Ok(id) => {
-            match store.fetch_job(job_id).await {
-                Ok(job) => {
-                    let osprei::ScheduleRequest { hour, minute } = request;
-                    execute::schedule_job(job, hour, minute, path_builder, store).await;
-                }
-                Err(err) => {
-                    error!("failed to schedule: job not found: {}", err);
-                }
-            }
-            Ok(id)
-        }
-        Err(err) => Err(err),
-    };
+    let (tx, rx) = oneshot::channel();
+    let osprei::ScheduleRequest { hour, minute } = request;
+    engine
+        .send(execute::Message::Schedule {
+            job_id,
+            hour,
+            minute,
+            response: tx,
+        })
+        .await
+        .unwrap();
+    let id = rx.await.unwrap();
     reply(id)
 }
 
 pub async fn get_stdout(
     execution_id: i64,
-    store: Box<dyn Storage>,
+    persistance: mpsc::Sender<persistance::Message>,
 ) -> Result<impl warp::Reply, Infallible> {
-    let stdout = store.get_stdout(execution_id).await;
+    let (tx, rx) = oneshot::channel();
+    persistance
+        .send(persistance::Message::GetStdout(execution_id, tx))
+        .await
+        .unwrap();
+    let stdout = rx.await.unwrap();
     reply(stdout)
 }
 
 pub async fn get_stderr(
     execution_id: i64,
-    store: Box<dyn Storage>,
+    persistance: mpsc::Sender<persistance::Message>,
 ) -> Result<impl warp::Reply, Infallible> {
-    let stderr = store.get_stderr(execution_id).await;
+    let (tx, rx) = oneshot::channel();
+    persistance
+        .send(persistance::Message::GetStdout(execution_id, tx))
+        .await
+        .unwrap();
+    let stderr = rx.await.unwrap();
     reply(stderr)
 }
 

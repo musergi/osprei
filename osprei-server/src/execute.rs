@@ -1,7 +1,10 @@
 use chrono::DurationRound;
 use log::{debug, error, info, warn};
-use osprei::{EnvironmentDefinition, Job, Stage, StageExecutionSummary};
+use osprei::{EnvironmentDefinition, Job, Schedule, Stage, StageExecutionSummary};
 use std::collections::HashMap;
+use tokio::sync::{mpsc, oneshot};
+
+use crate::persistance;
 
 #[derive(Debug, Clone)]
 pub struct Report {
@@ -28,6 +31,185 @@ impl From<std::process::Output> for Report {
             stdout,
             stderr,
         }
+    }
+}
+
+#[derive(Debug)]
+pub enum Message {
+    Execute {
+        job_id: i64,
+        response: oneshot::Sender<Option<i64>>,
+    },
+    Schedule {
+        job_id: i64,
+        hour: u8,
+        minute: u8,
+        response: oneshot::Sender<Result<i64, persistance::StorageError>>,
+    },
+}
+
+pub struct ExecutionEngine {
+    channel: mpsc::Receiver<Message>,
+    sender: mpsc::Sender<Message>,
+    persistance: mpsc::Sender<persistance::Message>,
+    execution_dir: String,
+}
+
+impl ExecutionEngine {
+    pub async fn new(
+        execution_dir: String,
+        persistance: mpsc::Sender<persistance::Message>,
+    ) -> (mpsc::Sender<Message>, Self) {
+        let (tx, rx) = mpsc::channel(128);
+        let engine = Self {
+            channel: rx,
+            sender: tx.clone(),
+            persistance,
+            execution_dir,
+        };
+        let schedules = engine.get_all_schedules().await;
+        for Schedule {
+            job_id,
+            hour,
+            minute,
+            ..
+        } in schedules
+        {
+            engine.spawn_schedule(job_id, hour, minute);
+        }
+        (tx, engine)
+    }
+
+    fn spawn_schedule(&self, job_id: i64, hour: u8, minute: u8) {
+        let sender = self.sender.clone();
+        tokio::spawn(async move {
+            match create_interval(hour, minute) {
+                Ok(mut interval) => {
+                    debug!("Created loop to run {}", job_id);
+                    loop {
+                        interval.tick().await;
+                        let (response, receiver) = oneshot::channel();
+                        sender
+                            .send(Message::Execute { job_id, response })
+                            .await
+                            .unwrap_or_default();
+                        match receiver.await {
+                            Ok(Some(execution_id)) => {
+                                info!("Schedule created execution: {}", execution_id);
+                            }
+                            _ => error!("Failed to create execution"),
+                        }
+                    }
+                }
+                Err(err) => {
+                    error!("Could not schedule: {}", err);
+                }
+            }
+        });
+    }
+
+    pub async fn serve(mut self) {
+        while let Some(message) = self.channel.recv().await {
+            match message {
+                Message::Execute {
+                    job_id,
+                    response: respone,
+                } => {
+                    let job = self.get_job(job_id).await;
+                    match job {
+                        Some(job) => {
+                            let execution_id = self.get_execution_id(job_id).await;
+                            respone.send(execution_id).unwrap_or_default();
+                            match execution_id {
+                                Some(execution_id) => {
+                                    let osprei::JobPointer { source, path, .. } = job;
+                                    let report = JobDescriptor {
+                                        execution_dir: self.execution_dir.clone(),
+                                        source,
+                                        path,
+                                    }
+                                    .execute_job()
+                                    .await;
+                                    match self.store_report(execution_id, report).await {
+                                        Err(err) => error!("error storing result {}", err),
+                                        _ => (),
+                                    }
+                                }
+                                None => error!("Failed to create execution id"),
+                            };
+                        }
+                        None => respone.send(None).unwrap_or_default(),
+                    }
+                }
+                Message::Schedule {
+                    job_id,
+                    hour,
+                    minute,
+                    response,
+                } => {
+                    let (tx, rx) = oneshot::channel();
+                    let message = persistance::Message::CreateSchedule(
+                        persistance::request::Schedule {
+                            job_id,
+                            hour,
+                            minute,
+                        },
+                        tx,
+                    );
+                    self.persistance.send(message).await.unwrap();
+                    let schedule_id = rx.await.unwrap();
+                    response.send(schedule_id).unwrap();
+                    self.spawn_schedule(job_id, hour, minute);
+                }
+            }
+        }
+    }
+
+    async fn get_job(&self, job_id: i64) -> Option<osprei::JobPointer> {
+        let (tx, rx) = oneshot::channel();
+        let message = persistance::Message::FetchJob(job_id, tx);
+        self.persistance.send(message).await.ok()?;
+        rx.await.ok()?.ok()
+    }
+
+    async fn get_execution_id(&self, job_id: i64) -> Option<i64> {
+        let (tx, rx) = oneshot::channel();
+        let message = persistance::Message::CreateExecution(job_id, tx);
+        self.persistance.send(message).await.ok()?;
+        rx.await.ok()?.ok()
+    }
+
+    async fn store_report(
+        &self,
+        execution_id: i64,
+        report: Report,
+    ) -> Result<(), persistance::StorageError> {
+        let (tx, rx) = oneshot::channel();
+        let Report {
+            status,
+            stdout,
+            stderr,
+        } = report;
+        let request = persistance::request::Execution {
+            id: execution_id,
+            status,
+            stdout,
+            stderr,
+        };
+        let message = persistance::Message::SetExecution(request, tx);
+        self.persistance.send(message).await.unwrap();
+        rx.await.unwrap()
+    }
+
+    async fn get_all_schedules(&self) -> Vec<Schedule> {
+        let (tx, rx) = oneshot::channel();
+        self.persistance
+            .send(persistance::Message::ListSchedules(tx))
+            .await
+            .unwrap_or_default();
+        rx.await
+            .map(|response| response.unwrap_or_default())
+            .unwrap_or_default()
     }
 }
 

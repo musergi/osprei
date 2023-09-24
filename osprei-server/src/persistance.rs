@@ -1,8 +1,129 @@
-use std::{error::Error, fmt::Display};
-
+use std::error::Error;
+use std::fmt::Display;
+use tokio::sync::mpsc;
+use tokio::sync::oneshot;
 use warp::Filter;
 
+type Response<T> = oneshot::Sender<StoreResult<T>>;
+
+#[derive(Debug)]
+pub enum Message {
+    ListJobs(Response<Vec<osprei::JobOverview>>),
+    StoreJob(request::Job, Response<i64>),
+    FetchJob(i64, Response<osprei::JobPointer>),
+    CreateExecution(i64, Response<i64>),
+    SetExecution(request::Execution, Response<()>),
+    GetExecution(i64, Response<osprei::ExecutionDetails>),
+    CreateSchedule(request::Schedule, Response<i64>),
+    ListSchedules(Response<Vec<osprei::Schedule>>),
+    GetStdout(i64, Response<String>),
+    GetStderr(i64, Response<String>),
+}
+
+pub mod request;
+
 type StoreResult<T> = Result<T, StorageError>;
+
+pub struct Persistance {
+    channel: mpsc::Receiver<Message>,
+    inner: Box<dyn Storage>,
+}
+
+impl Persistance {
+    pub async fn new(
+        config: PersistanceConfig,
+    ) -> StoreResult<(mpsc::Sender<Message>, Persistance)> {
+        let inner = match config {
+            PersistanceConfig::Memory => Self::new_memory(),
+            PersistanceConfig::Sqlite { path } => Self::new_sqlite(&path).await?,
+        };
+        let (tx, rx) = mpsc::channel(128);
+        let persistance = Self { channel: rx, inner };
+        Ok((tx, persistance))
+    }
+
+    fn new_memory() -> Box<dyn Storage> {
+        Box::new(memory::MemoryStore::default())
+    }
+
+    async fn new_sqlite(path: &str) -> StoreResult<Box<dyn Storage>> {
+        Ok(Box::new(sqlite::DatabasePersistance::new(path).await?))
+    }
+
+    pub async fn serve(mut self) {
+        while let Some(message) = self.channel.recv().await {
+            match message {
+                Message::ListJobs(response) => response
+                    .send(self.inner.list_jobs_new().await)
+                    .map_err(log_err)
+                    .unwrap_or_default(),
+                Message::StoreJob(request::Job { name, source, path }, response) => response
+                    .send(self.inner.store_job(name, source, path).await)
+                    .map_err(log_err)
+                    .unwrap_or_default(),
+                Message::FetchJob(id, response) => response
+                    .send(self.inner.fetch_job(id).await)
+                    .map_err(log_err)
+                    .unwrap_or_default(),
+                Message::CreateExecution(id, response) => response
+                    .send(self.inner.create_execution(id).await)
+                    .map_err(log_err)
+                    .unwrap_or_default(),
+                Message::SetExecution(
+                    request::Execution {
+                        id,
+                        status,
+                        stdout,
+                        stderr,
+                    },
+                    response,
+                ) => response
+                    .send(
+                        self.inner
+                            .set_execution_result(id, stdout, stderr, status)
+                            .await,
+                    )
+                    .map_err(log_err)
+                    .unwrap_or_default(),
+                Message::GetExecution(id, response) => response
+                    .send(self.inner.get_execution(id).await)
+                    .map_err(log_err)
+                    .unwrap_or_default(),
+                Message::CreateSchedule(
+                    request::Schedule {
+                        job_id,
+                        hour,
+                        minute,
+                    },
+                    response,
+                ) => response
+                    .send(
+                        self.inner
+                            .create_daily(job_id, osprei::ScheduleRequest { hour, minute })
+                            .await,
+                    )
+                    .map_err(log_err)
+                    .unwrap_or_default(),
+                Message::ListSchedules(response) => response
+                    .send(self.inner.get_all_schedules().await)
+                    .map_err(log_err)
+                    .unwrap_or_default(),
+                Message::GetStdout(id, response) => response
+                    .send(self.inner.get_stdout(id).await)
+                    .map_err(log_err)
+                    .unwrap_or_default(),
+                Message::GetStderr(id, response) => response
+                    .send(self.inner.get_stderr(id).await)
+                    .map_err(log_err)
+                    .unwrap_or_default(),
+            };
+        }
+    }
+}
+
+fn log_err<T>(_err: T) {
+    log::warn!("channel close before resource could be sent");
+}
 
 #[async_trait::async_trait]
 pub trait Storage: Send + Sync + 'static {
