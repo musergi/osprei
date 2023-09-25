@@ -1,3 +1,4 @@
+use docker_api::Docker;
 use log::{error, warn};
 
 use clap::Parser;
@@ -30,10 +31,11 @@ async fn main() {
             persistance,
         }) => {
             let pool = create_database(&persistance).await.unwrap();
-            build_workspace(&format!("{}/workspaces", data_path)).await;
+            build_workspace(&data_path).await;
+            let docker = Docker::new("unix:///var/run/docker.sock").unwrap();
             warp::serve(
                 warp::any()
-                    .and(routes(pool))
+                    .and(routes(pool, docker))
                     .with(cors())
                     .with(warp::log("api")),
             )
