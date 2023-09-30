@@ -4,6 +4,7 @@ use docker_api::opts::ContainerRemoveOpts;
 use docker_api::opts::LogsOpts;
 use docker_api::Containers;
 use docker_api::Docker;
+use osprei::Job;
 use osprei::JobCreationRequest;
 use osprei::JobPointer;
 use sqlx::Row;
@@ -69,16 +70,19 @@ pub async fn get_jobs(pool: sqlx::SqlitePool) -> Result<impl warp::Reply, Infall
 
 pub async fn get_job(job_id: i64, pool: sqlx::SqlitePool) -> Result<impl warp::Reply, Infallible> {
     let mut conn = pool.acquire().await.unwrap();
-    let pointer = sqlx::query("SELECT id, name, source, path FROM jobs WHERE id = $1")
+    let pointer = sqlx::query("SELECT id, name, definition FROM jobs WHERE id = $1")
         .bind(job_id)
         .fetch_optional(&mut conn)
         .await
         .unwrap()
-        .map(|row| osprei::JobPointer {
-            id: row.get(0),
-            name: row.get(1),
-            source: row.get(2),
-            path: row.get(3),
+        .map(|row| {
+            let definition: String = row.get(2);
+            let definition = serde_json::from_str(&definition).unwrap();
+            osprei::JobPointer {
+                id: row.get(0),
+                name: row.get(1),
+                definition,
+            }
         })
         .unwrap();
     Ok(warp::reply::json(&pointer))
@@ -88,12 +92,12 @@ pub async fn post_job(
     request: JobCreationRequest,
     pool: sqlx::SqlitePool,
 ) -> Result<impl warp::Reply, Infallible> {
-    let JobCreationRequest { name, source, path } = request;
+    let JobCreationRequest { name, definition } = request;
+    let definition = serde_json::to_string(&definition).unwrap();
     let mut conn = pool.acquire().await.unwrap();
-    let id = sqlx::query("INSERT INTO jobs (name, source, path) VALUES ($1, $2, $3)")
+    let id = sqlx::query("INSERT INTO jobs (name, definition) VALUES ($1, $2, $3)")
         .bind(name)
-        .bind(source)
-        .bind(path)
+        .bind(definition)
         .execute(&mut conn)
         .await
         .unwrap()
@@ -107,16 +111,19 @@ pub async fn get_job_run(
     docker: Docker,
 ) -> Result<impl warp::Reply, Infallible> {
     let mut conn = pool.acquire().await.unwrap();
-    let pointer = sqlx::query("SELECT id, name, source, path FROM jobs WHERE id = $1")
+    let pointer = sqlx::query("SELECT id, name, definition FROM jobs WHERE id = $1")
         .bind(job_id)
         .fetch_optional(&mut conn)
         .await
         .unwrap()
-        .map(|row| osprei::JobPointer {
-            id: row.get(0),
-            name: row.get(1),
-            source: row.get(2),
-            path: row.get(3),
+        .map(|row| {
+            let definition: String = row.get(2);
+            let definition = serde_json::from_str(&definition).unwrap();
+            osprei::JobPointer {
+                id: row.get(0),
+                name: row.get(1),
+                definition,
+            }
         })
         .unwrap();
     let id =
@@ -129,7 +136,16 @@ pub async fn get_job_run(
     {
         let execution_id = id.clone();
         tokio::spawn(async move {
-            let JobPointer { name, source, .. } = pointer;
+            let JobPointer {
+                name, definition, ..
+            } = pointer;
+            let Job {
+                source,
+                image,
+                command,
+                arguments,
+                ..
+            } = definition;
             let checkout_path = format!("/opt/osprei/var/workspace/{}", name);
             tokio::process::Command::new("git")
                 .arg("clone")
@@ -139,11 +155,13 @@ pub async fn get_job_run(
                 .await
                 .unwrap();
             let volume = format!("{v}:{v}", v = checkout_path);
+            let mut command = vec![command];
+            command.extend(arguments);
             let opts = ContainerCreateOpts::builder()
                 .name(&name)
-                .image("rust")
+                .image(image)
                 .working_dir(&checkout_path)
-                .command(vec!["cargo", "test"])
+                .command(command)
                 .volumes(vec![volume])
                 .build();
             let container = Containers::new(docker).create(&opts).await.unwrap();

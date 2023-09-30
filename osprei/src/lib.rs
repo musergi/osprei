@@ -1,21 +1,20 @@
-#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, serde::Deserialize, serde::Serialize)]
 pub struct Job {
-    pub stages: Vec<Stage>,
-}
-
-#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
-pub struct Stage {
+    /// Path to the repository
+    pub source: String,
+    /// Image to run the job in
+    pub image: String,
     /// Command to run
-    pub cmd: String,
+    pub command: String,
     /// Arguments passed to the command
-    pub args: Vec<String>,
+    pub arguments: Vec<String>,
     /// Working directory, relative to source root
-    pub path: String,
+    pub working_directory: String,
     /// Environment variables for execution
-    pub env: Vec<EnvironmentDefinition>,
+    pub environment: Vec<EnvironmentDefinition>,
 }
 
-#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, serde::Deserialize, serde::Serialize)]
 pub struct EnvironmentDefinition {
     /// Name of the variable to set
     pub key: String,
@@ -29,10 +28,8 @@ pub struct JobPointer {
     pub id: i64,
     /// A human readable identifier for the job
     pub name: String,
-    /// Git repository for the job
-    pub source: String,
-    /// Path, relative to the repository root, of the job definition
-    pub path: String,
+    /// Definition of the job
+    pub definition: Job,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Deserialize, serde::Serialize)]
@@ -40,9 +37,7 @@ pub struct JobCreationRequest {
     /// A human readable identifier for the job
     pub name: String,
     /// Git repository for the job
-    pub source: String,
-    /// Path, relative to the repository root, of the job definition
-    pub path: String,
+    pub definition: Job,
 }
 
 #[derive(Debug)]

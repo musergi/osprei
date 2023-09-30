@@ -57,8 +57,7 @@ async fn create_database(database_path: &str) -> Result<sqlx::sqlite::SqlitePool
             (
                 id INTEGER PRIMARY KEY,
                 name TEXT,
-                source TEXT,
-                path TEXT
+                definition TEXT,
             )
         ",
     )

@@ -1,0 +1,10 @@
+{
+    "source": "https://github.com/musergi/osprei.git",
+    "image": "rust:latest",
+    "cmd": "cargo",
+    "args": [
+        "test"
+    ],
+    "path": ".",
+    "env": []
+}

@@ -19,7 +19,6 @@ enum Commands {
     List,
     Add(JobAddArgs),
     Run { job_id: i64 },
-    Describe { job_id: i64 },
     Schedule(JobScheduleArgs),
     Log(ExecutionLogArgs),
 }
@@ -28,8 +27,6 @@ enum Commands {
 struct JobAddArgs {
     #[arg(long)]
     name: String,
-    #[arg(long)]
-    source: String,
     #[arg(long)]
     path: String,
 }
@@ -69,9 +66,11 @@ async fn main() {
             let handler = osprei_cli::Handler::new(client);
             handler.handle_log(id, stderr.unwrap_or(false)).await;
         }
-        Commands::Add(JobAddArgs { name, source, path }) => {
+        Commands::Add(JobAddArgs { name, path }) => {
             let url = format!("{}/job", server);
-            let req = osprei::JobCreationRequest { name, source, path };
+            let definition = std::fs::read_to_string(path).unwrap();
+            let definition = serde_json::from_str(&definition).unwrap();
+            let req = osprei::JobCreationRequest { name, definition };
             let response = reqwest::Client::new()
                 .post(&url)
                 .body(serde_json::to_string(&req).unwrap())
@@ -89,36 +88,6 @@ async fn main() {
             let response = reqwest::get(url).await.unwrap().text().await.unwrap();
             let execution_id: i64 = serde_json::from_str(&response).unwrap();
             println!("Created execution with id {}.", execution_id);
-        }
-        Commands::Describe { job_id } => {
-            let url = format!("{}/job/{}", server, job_id);
-            let body = reqwest::get(&url).await.unwrap().text().await.unwrap();
-            let osprei::JobPointer {
-                id,
-                name,
-                source,
-                path,
-            } = serde_json::from_str(&body).unwrap();
-            println!("{}", name);
-            println!("Id: {}", id);
-            println!("Source: {}", source);
-            println!("Path: {}", path);
-            let url = format!("{}/job/{}/executions", server, job_id);
-            let body = reqwest::get(&url).await.unwrap().text().await.unwrap();
-            let executions: Vec<osprei::ExecutionSummary> = serde_json::from_str(&body).unwrap();
-            if let Some(execution) = executions.first() {
-                let url = format!("{}/execution/{}", server, execution.id);
-                let body = reqwest::get(&url).await.unwrap().text().await.unwrap();
-                let execution: osprei::ExecutionDetails = serde_json::from_str(&body).unwrap();
-                let status = match execution.status {
-                    None => "Running",
-                    Some(osprei::ExecutionStatus::Success) => "Success",
-                    _ => "Failure",
-                };
-                println!("Last execution: {} UTC ({})", execution.start_time, status);
-            } else {
-                println!("Not executed yet.");
-            }
         }
         Commands::Schedule(JobScheduleArgs { id, hour, minute }) => {
             let url = format!("{}/job/{}/schedule", server, id);
