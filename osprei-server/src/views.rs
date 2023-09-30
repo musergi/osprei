@@ -95,7 +95,7 @@ pub async fn post_job(
     let JobCreationRequest { name, definition } = request;
     let definition = serde_json::to_string(&definition).unwrap();
     let mut conn = pool.acquire().await.unwrap();
-    let id = sqlx::query("INSERT INTO jobs (name, definition) VALUES ($1, $2, $3)")
+    let id = sqlx::query("INSERT INTO jobs (name, definition) VALUES ($1, $2)")
         .bind(name)
         .bind(definition)
         .execute(&mut conn)
