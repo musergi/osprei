@@ -4,5 +4,6 @@ members = [
     "osprei-server",
     "osprei",
     "osprei-cli",
+    "osprei-gui",
 ]
 resolver = "2"
