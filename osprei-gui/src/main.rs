@@ -1,4 +1,7 @@
+use crate::leptos_dom::logging::console_log;
 use leptos::*;
+
+const JOB_POLLING_INTERVAL: std::time::Duration = std::time::Duration::from_secs(5);
 
 fn main() {
     mount_to_body(|| {
@@ -11,6 +14,13 @@ fn main() {
 #[component]
 fn App() -> impl IntoView {
     let jobs = create_resource(|| (), |_| async move { load_jobs().await });
+    set_interval(
+        move || {
+            console_log("Refetching jobs");
+            jobs.refetch();
+        },
+        JOB_POLLING_INTERVAL,
+    );
     view! {
         {move || match jobs.get() {
             Some(jobs) => view! { <JobTable jobs/> }.into_view(),
@@ -66,24 +76,6 @@ impl From<osprei::ExecutionDetails> for JobData {
     }
 }
 
-#[derive(Clone, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
-enum JobRowState {
-    ToRun,
-    Loaded(JobData),
-}
-
-impl From<Option<osprei::LastExecution>> for JobRowState {
-    fn from(value: Option<osprei::LastExecution>) -> Self {
-        JobRowState::from(JobData::from(value))
-    }
-}
-
-impl From<JobData> for JobRowState {
-    fn from(value: JobData) -> Self {
-        JobRowState::Loaded(value)
-    }
-}
-
 #[component]
 fn JobRow(job: osprei::JobOverview) -> impl IntoView {
     let osprei::JobOverview {
@@ -91,56 +83,32 @@ fn JobRow(job: osprei::JobOverview) -> impl IntoView {
         name,
         last_execution,
     } = job;
-    let (job_row_state, set_job_row_state) = create_signal(JobRowState::from(last_execution));
-    let job_data = create_resource(
-        move || job_row_state.get(),
-        move |state| async move {
-            match state {
-                JobRowState::ToRun => {
-                    let execution_id = run_job(id).await;
-                    let execution = load_execution(execution_id).await;
-                    let job_data = JobData::from(execution);
-                    set_job_row_state.set(JobRowState::from(job_data.clone()));
-                    job_data
-                }
-                JobRowState::Loaded(loaded) => loaded,
-            }
-        },
-    );
+    let job_data = JobData::from(last_execution);
 
-    let start_time = move || {
-        job_data
-            .map(|job| job.start_time.to_string())
-            .unwrap_or("Loading".to_string())
+    let color = if job_data.status == ExecutionStatus::Success {
+        "green"
+    } else {
+        "false"
     };
 
-    let color = move || {
-        if job_data
-            .map(|job| job.status == ExecutionStatus::Success)
-            .unwrap_or(false)
-        {
-            "green"
-        } else {
-            "false"
+    let run = create_action(|id| {
+        let id = *id;
+        async move {
+            run_job(id).await;
         }
-    };
-
-    let status = move || {
-        job_data
-            .map(|job| job.status.to_string())
-            .unwrap_or("Loading".to_string())
-    };
-
-    let run = move |_| {
-        set_job_row_state.set(JobRowState::ToRun);
-    };
+    });
 
     view! {
         <tr>
             <td>{ name }</td>
-            <td>{ start_time }</td>
-            <td class={ color }>{ status }</td>
-            <td class={ "run-button" } on:click=run>{ "Run" }</td>
+            <td>{ job_data.start_time.clone() }</td>
+            <td class={ color }>{ job_data.status.to_string() }</td>
+            <td class={ "run-button" } on:click=move |e| {
+                e.prevent_default();
+                run.dispatch(id);
+            }>
+                { "Run" }
+            </td>
         </tr>
     }
 }
@@ -196,16 +164,6 @@ async fn load_jobs() -> Vec<osprei::JobOverview> {
 
 async fn run_job(id: i64) -> i64 {
     let body = reqwest::get(format!("http://localhost:8081/job/{}/run", id))
-        .await
-        .unwrap()
-        .text()
-        .await
-        .unwrap();
-    serde_json::from_str(&body).unwrap()
-}
-
-async fn load_execution(id: i64) -> osprei::ExecutionDetails {
-    let body = reqwest::get(format!("http://localhost:8081/execution/{}", id))
         .await
         .unwrap()
         .text()
