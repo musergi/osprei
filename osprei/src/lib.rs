@@ -138,3 +138,9 @@ pub struct JobOverview {
     pub name: String,
     pub last_execution: Option<LastExecution>,
 }
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+pub struct Error {
+    pub status: i64,
+    pub message: String,
+}

@@ -9,84 +9,30 @@ use osprei::JobCreationRequest;
 use osprei::JobPointer;
 use sqlx::Row;
 use std::convert::Infallible;
-use std::iter::Iterator;
 use tokio_stream::StreamExt;
+use warp::reply::Reply;
+
+fn reply<S: serde::Serialize>(result: Result<S, storage::Error>) -> impl warp::Reply {
+    match result {
+        Ok(serializable) => warp::reply::json(&serializable).into_response(),
+        Err(err) => err.to_reply().into_response(),
+    }
+}
 
 pub async fn get_jobs(pool: sqlx::SqlitePool) -> Result<impl warp::Reply, Infallible> {
-    let mut conn = pool.acquire().await.unwrap();
-    let jobs: Vec<_> = sqlx::query(
-        "
-        SELECT 
-            jid,
-            name,
-            eid,
-            start_time,
-            status
-        FROM (
-            SELECT
-                jobs.id AS jid,
-                name,
-                executions.id AS eid,
-                start_time,
-                status,
-                row_number() OVER ( partition BY jobs.id ORDER BY start_time DESC, executions.id DESC) AS score
-            FROM (
-                jobs
-                LEFT JOIN executions
-                     ON (jobs.id = job_id)
-            )
-        )
-        WHERE  score = 1
-        ",
-    )
-    .fetch_all(&mut conn)
-    .await
-    .unwrap()
-    .into_iter()
-    .map(|row| {
-        let id: i64 = row.get(0);
-        let name: String = row.get(1);
-        let execution_id: Option<i64> = row.get(2);
-        let start_time: Option<String> = row.get(3);
-        let status: Option<i64> = row.get(4);
-        let status = status.map(osprei::ExecutionStatus::from);
-        let last_execution = match (execution_id, start_time) {
-            (Some(id), Some(start_time)) => Some(osprei::LastExecution {
-                id,
-                start_time,
-                status,
-            }),
-            _ => None,
-        };
-        osprei::JobOverview {
-            id,
-            name,
-            last_execution,
-        }
-    })
-    .collect();
-    Ok(warp::reply::json(&jobs))
+    let jobs = Storage::new(pool).get_jobs().await;
+    let reply = reply(jobs);
+    Ok(reply)
 }
 
 pub async fn get_job(job_id: i64, pool: sqlx::SqlitePool) -> Result<impl warp::Reply, Infallible> {
-    let mut conn = pool.acquire().await.unwrap();
-    let pointer = sqlx::query("SELECT id, name, definition FROM jobs WHERE id = $1")
-        .bind(job_id)
-        .fetch_optional(&mut conn)
-        .await
-        .unwrap()
-        .map(|row| {
-            let definition: String = row.get(2);
-            let definition = serde_json::from_str(&definition).unwrap();
-            osprei::JobPointer {
-                id: row.get(0),
-                name: row.get(1),
-                definition,
-            }
-        })
-        .unwrap();
-    Ok(warp::reply::json(&pointer))
+    let jobs = Storage::new(pool).get_job(job_id).await;
+    let reply = reply(jobs);
+    Ok(reply)
 }
+
+mod storage;
+use storage::Storage;
 
 pub async fn post_job(
     request: JobCreationRequest,
