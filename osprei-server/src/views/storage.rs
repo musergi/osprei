@@ -90,7 +90,7 @@ impl Storage {
         Ok(jobs)
     }
 
-    pub async fn get_job(&self, job_id: i64) -> Result<impl serde::Serialize, Error> {
+    pub async fn get_job(&self, job_id: i64) -> Result<osprei::JobPointer, Error> {
         let mut conn = self.pool.acquire().await?;
         let row = sqlx::query(GET_JOB_QUERY)
             .bind(job_id)
@@ -105,5 +105,21 @@ impl Storage {
             definition,
         };
         Ok(job)
+    }
+
+    pub async fn post_job(
+        &self,
+        request: osprei::JobCreationRequest,
+    ) -> Result<impl serde::Serialize, Error> {
+        let osprei::JobCreationRequest { name, definition } = request;
+        let definition = serde_json::to_string(&definition).unwrap();
+        let mut conn = self.pool.acquire().await?;
+        let id = sqlx::query("INSERT INTO jobs (name, definition) VALUES ($1, $2)")
+            .bind(name)
+            .bind(definition)
+            .execute(&mut conn)
+            .await?
+            .last_insert_rowid();
+        Ok(id)
     }
 }

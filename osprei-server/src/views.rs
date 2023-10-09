@@ -12,6 +12,9 @@ use std::convert::Infallible;
 use tokio_stream::StreamExt;
 use warp::reply::Reply;
 
+mod storage;
+use storage::Storage;
+
 fn reply<S: serde::Serialize>(result: Result<S, storage::Error>) -> impl warp::Reply {
     match result {
         Ok(serializable) => warp::reply::json(&serializable).into_response(),
@@ -31,24 +34,13 @@ pub async fn get_job(job_id: i64, pool: sqlx::SqlitePool) -> Result<impl warp::R
     Ok(reply)
 }
 
-mod storage;
-use storage::Storage;
-
 pub async fn post_job(
     request: JobCreationRequest,
     pool: sqlx::SqlitePool,
 ) -> Result<impl warp::Reply, Infallible> {
-    let JobCreationRequest { name, definition } = request;
-    let definition = serde_json::to_string(&definition).unwrap();
-    let mut conn = pool.acquire().await.unwrap();
-    let id = sqlx::query("INSERT INTO jobs (name, definition) VALUES ($1, $2)")
-        .bind(name)
-        .bind(definition)
-        .execute(&mut conn)
-        .await
-        .unwrap()
-        .last_insert_rowid();
-    Ok(warp::reply::json(&id))
+    let id = Storage::new(pool).post_job(request).await;
+    let reply = reply(id);
+    Ok(reply)
 }
 
 pub async fn get_job_run(
