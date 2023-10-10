@@ -100,6 +100,22 @@ const UPDATE_EXECUTION_QUERY: &str = "
     WHERE id = $1
 ";
 
+const GET_EXECUTION_QUERY: &str = "
+    SELECT
+        executions.id,
+        jobs.name,
+        start_time,
+        status,
+        stdout,
+        stderr
+    FROM
+        executions
+        JOIN jobs
+            ON jobs.id = executions.job_id
+    WHERE
+        executions.id = $1
+";
+
 mod adapter;
 
 impl Storage {
@@ -179,5 +195,26 @@ impl Storage {
             .execute(&mut conn)
             .await?;
         Ok(())
+    }
+
+    pub async fn get_execution(&self, execution_id: i64) -> Result<impl serde::Serialize, Error> {
+        let mut conn = self.pool.acquire().await?;
+        sqlx::query(GET_EXECUTION_QUERY)
+            .bind(execution_id)
+            .fetch_optional(&mut conn)
+            .await?
+            .map(|row| {
+                let status_encoded: Option<i64> = row.get(3);
+                let status = status_encoded.map(osprei::ExecutionStatus::from);
+                osprei::ExecutionDetails {
+                    execution_id: row.get(0),
+                    job_name: row.get(1),
+                    start_time: row.get(2),
+                    status,
+                    stdout: row.get(4),
+                    stderr: row.get(5),
+                }
+            })
+            .ok_or(Error::NotFound)
     }
 }

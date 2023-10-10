@@ -63,42 +63,9 @@ pub async fn get_execution(
     execution_id: i64,
     pool: sqlx::SqlitePool,
 ) -> Result<impl warp::Reply, Infallible> {
-    let mut conn = pool.acquire().await.unwrap();
-    let execution = sqlx::query(
-        "
-            SELECT
-                executions.id,
-                jobs.name,
-                start_time,
-                status,
-                stdout,
-                stderr
-            FROM
-                executions
-                JOIN jobs
-                    ON jobs.id = executions.job_id
-            WHERE
-                executions.id = $1
-            ",
-    )
-    .bind(execution_id)
-    .fetch_optional(&mut conn)
-    .await
-    .unwrap()
-    .map(|row| {
-        let status_encoded: Option<i64> = row.get(3);
-        let status = status_encoded.map(osprei::ExecutionStatus::from);
-        osprei::ExecutionDetails {
-            execution_id: row.get(0),
-            job_name: row.get(1),
-            start_time: row.get(2),
-            status,
-            stdout: row.get(4),
-            stderr: row.get(5),
-        }
-    })
-    .unwrap();
-    Ok(warp::reply::json(&execution))
+    let execution = Storage::new(pool).get_execution(execution_id).await;
+    let reply = reply(execution);
+    Ok(reply)
 }
 
 pub async fn post_job_schedule(
