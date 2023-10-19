@@ -1,0 +1,20 @@
+[package]
+name = "osprei-new-server"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+osprei-app = { path = "../osprei-app", default-features = false, features = [
+    "ssr",
+] }
+sqlx = { version = "0.7.2", features = ["sqlite", "runtime-tokio-rustls"] }
+docker-api = "0.14.0"
+leptos = { workspace = true, features = ["ssr"] }
+leptos_axum.workspace = true
+
+axum = { workspace = true, features = ["json"] }
+simple_logger.workspace = true
+tokio.workspace = true
+tower.workspace = true
+tower-http.workspace = true
+log.workspace = true

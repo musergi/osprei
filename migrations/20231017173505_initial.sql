@@ -1,0 +1,10 @@
+CREATE TABLE IF NOT EXISTS jobs (
+    id INTEGER PRIMARY KEY,
+    source TEXT NOT NULL UNIQUE
+);
+
+CREATE TABLE IF NOT EXISTS executions (
+    id INTEGER PRIMARY KEY,
+    job_id INTEGER,
+    FOREIGN KEY(job_id) REFERENCES jobs(id)
+);
