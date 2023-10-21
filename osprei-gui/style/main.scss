@@ -1,0 +1,26 @@
+@import url('https://fonts.googleapis.com/css2?family=Inconsolata&family=Itim&display=swap');
+
+body {
+	font-family: 'Inconsolata', monospace;
+	text-align: center;
+}
+
+.job-table {
+	display: inline-block;
+	border-collapse: collapse;
+}
+
+.job-table th,
+.job-table td {
+	border: 2px solid black;
+}
+
+.job-table th {
+	text-align: center;
+	padding: 0.4em 2em;
+}
+
+.job-table td {
+	text-align: left;
+	padding: 0.4em 1em;
+}
