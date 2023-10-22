@@ -121,8 +121,17 @@ pub async fn add_job(source: String) -> Result<(), ServerFnError> {
 pub async fn execute_job(job_id: i64) -> Result<(), ServerFnError> {
     log::info!("Running job with id {}", job_id);
     let source = osprei_storage::job_source(job_id).await?;
+    let execution_id = osprei_storage::execution_create(job_id).await?;
     tokio::spawn(async move {
-        osprei_execution::execute(source).await;
+        let success = osprei_execution::execute(source).await;
+        match success {
+            true => {
+                let _ = osprei_storage::execution_success(execution_id).await;
+            },
+            _ => {
+                let _ = osprei_storage::execution_failure(execution_id).await;
+            }
+        }
     });
     Ok(())
 }
