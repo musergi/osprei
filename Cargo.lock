@@ -1760,7 +1760,6 @@ dependencies = [
  "osprei-storage",
  "serde",
  "simple_logger",
- "sqlx",
  "thiserror",
  "tokio",
  "tower",
