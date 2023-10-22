@@ -17,6 +17,7 @@ leptos_meta = { version = "0.5" }
 leptos_router = { version = "0.5" }
 log = "0.4"
 osprei-execution = { path = "../osprei-execution", optional = true }
+osprei-storage = { path = "../osprei-storage", optional = true }
 simple_logger = "4"
 serde = { version = "*", features = ["derive"] }
 sqlx = { version = "0.6.3", features = [
@@ -43,8 +44,8 @@ ssr = [
     "leptos_meta/ssr",
     "leptos_router/ssr",
     "dep:tracing",
-    "dep:sqlx",
     "dep:osprei-execution",
+    "dep:osprei-storage",
 ]
 
 [profile.wasm-release]

@@ -1,0 +1,8 @@
+[package]
+name = "osprei-storage"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+sqlx = { version = "0.6.3", features = ["runtime-tokio-rustls", "sqlite"] }
+log = "0.4"

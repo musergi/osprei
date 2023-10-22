@@ -105,81 +105,30 @@ fn JobRow(id: i64, execute_job: Action<ExecuteJob, Result<(), ServerFnError>>) -
     }
 }
 
-cfg_if::cfg_if! {
-    if #[cfg(feature = "ssr")] {
-        use sqlx::{Connection, SqliteConnection};
-
-        pub async fn db() -> Result<SqliteConnection, ServerFnError> {
-            let url = std::env::var("DATABASE_URL").unwrap();
-            Ok(SqliteConnection::connect(&url).await?)
-        }
-    }
-}
-
-struct JobId {
-    id: i64,
-}
-
 #[server(LoadJobList, "/api")]
 async fn load_job_list() -> Result<Vec<i64>, ServerFnError> {
-    log::info!("Getting database");
-    let mut conn = db().await?;
-    log::info!("Loading jobs");
-    let jobs = sqlx::query_as!(
-        JobId,
-        "
-        SELECT id
-        FROM jobs
-        "
-    )
-    .fetch_all(&mut conn)
-    .await?
-    .into_iter()
-    .map(|job| job.id)
-    .collect();
+    let jobs = osprei_storage::job_ids().await?;
     Ok(jobs)
 }
 
 #[server(AddJob, "/api")]
 pub async fn add_job(source: String) -> Result<(), ServerFnError> {
-    log::info!("Adding job with source {}", source);
-    let mut conn = db().await?;
-    sqlx::query!("INSERT INTO jobs (source) VALUES ($1)", source)
-        .execute(&mut conn)
-        .await?;
-    log::info!("Added");
+    osprei_storage::job_create(source).await?;
     Ok(())
 }
 
 #[server(ExecuteJob, "/api")]
 pub async fn execute_job(job_id: i64) -> Result<(), ServerFnError> {
     log::info!("Running job with id {}", job_id);
-    let source = load_job(job_id).await?;
+    let source = osprei_storage::job_source(job_id).await?;
     tokio::spawn(async move {
         osprei_execution::execute(source).await;
     });
     Ok(())
 }
 
-struct JobSource {
-    source: String,
-}
-
 #[server]
 async fn load_job(id: i64) -> Result<String, ServerFnError> {
-    log::info!("Getting database");
-    let mut conn = db().await?;
-    log::info!("Loading job {}", id);
-    let job = sqlx::query_as!(
-        JobSource,
-        "
-        SELECT source
-        FROM jobs
-        WHERE id = $1
-        ",
-        id
-    )
-    .fetch_one(&mut conn)
-    .await?;
-    Ok(job.source)
+    let source = osprei_storage::job_source(id).await?;
+    Ok(source)
 }

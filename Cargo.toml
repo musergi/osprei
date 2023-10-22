@@ -1,10 +1,4 @@
 [workspace]
 
-members = [
-    "osprei-server",
-    "osprei",
-    "osprei-cli",
-    "osprei-gui",
-    "osprei-execution",
-]
+members = ["osprei-gui", "osprei-execution", "osprei-storage"]
 resolver = "2"
