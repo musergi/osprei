@@ -2039,6 +2039,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "osprei-execution"
+version = "0.1.0"
+dependencies = [
+ "docker-api",
+ "log",
+ "serde",
+]
+
+[[package]]
 name = "osprei-gui"
 version = "0.1.0"
 dependencies = [
@@ -2046,13 +2055,13 @@ dependencies = [
  "cfg-if",
  "console_error_panic_hook",
  "console_log",
- "docker-api",
  "http",
  "leptos",
  "leptos_axum",
  "leptos_meta",
  "leptos_router",
  "log",
+ "osprei-execution",
  "serde",
  "simple_logger",
  "sqlx",
