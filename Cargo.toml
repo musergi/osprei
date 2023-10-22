@@ -1,7 +1,9 @@
 [workspace]
-
 members = ["osprei-gui", "osprei-execution", "osprei-storage"]
 resolver = "2"
+
+[workspace.dependencies]
+log = "0.4"
 
 [profile.wasm-release]
 inherits = "release"

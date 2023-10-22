@@ -7,5 +7,5 @@ edition = "2021"
 
 [dependencies]
 docker-api = { version = "0.14.0" }
-log = "0.4"
+log = { workspace = true }
 serde = { version = "*", features = ["derive"] }
