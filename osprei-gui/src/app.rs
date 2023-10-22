@@ -198,6 +198,35 @@ pub async fn execute_job(job_id: i64) -> Result<(), ServerFnError> {
             .map_err(|err| log::error!("Failed to delete container: {}", err))
             .unwrap();
         log::info!("Deleted container: {}", container.id());
+        let opts = docker_api::opts::ContainerCreateOpts::builder()
+            .image("rust:latest")
+            .volumes(vec![format!("{}:/workspaces", volume.name())])
+            .working_dir("/workspaces/code")
+            .command(vec!["cargo", "test"])
+            .build();
+        let container = docker
+            .containers()
+            .create(&opts)
+            .await
+            .map_err(|err| log::error!("Failed to create container: {}", err))
+            .unwrap();
+        log::info!("Created container: {}", container.id());
+        container
+            .start()
+            .await
+            .map_err(|err| log::error!("Failed to start container: {}", err))
+            .unwrap();
+        container
+            .wait()
+            .await
+            .map_err(|err| log::error!("Failed to wait container: {}", err))
+            .unwrap();
+        container
+            .delete()
+            .await
+            .map_err(|err| log::error!("Failed to delete container: {}", err))
+            .unwrap();
+        log::info!("Deleted container: {}", container.id());
         volume
             .delete()
             .await
