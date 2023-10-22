@@ -48,13 +48,6 @@ ssr = [
     "dep:osprei-storage",
 ]
 
-[profile.wasm-release]
-inherits = "release"
-opt-level = 'z'
-lto = true
-codegen-units = 1
-panic = "abort"
-
 [package.metadata.leptos]
 output-name = "osprei-gui"
 site-root = "target/site"
