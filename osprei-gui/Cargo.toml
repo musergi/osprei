@@ -19,7 +19,7 @@ log = { workspace = true }
 osprei-execution = { path = "../osprei-execution", optional = true }
 osprei-storage = { path = "../osprei-storage", optional = true }
 simple_logger = "4"
-serde = { version = "*", features = ["derive"] }
+serde = { workspace = true }
 sqlx = { version = "0.6.3", features = [
     "runtime-tokio-rustls",
     "sqlite",
