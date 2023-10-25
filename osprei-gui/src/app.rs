@@ -49,7 +49,7 @@ fn HomePage() -> impl IntoView {
                         .map(|job_ids| view!{<JobTable job_ids execute_job/>})
                     )
                 }
-                <ActionForm action=add_job>
+                <ActionForm class="add-job-form" action=add_job>
                     <label>
                         "Source"
                         <input type="text" name="source"/>
@@ -79,6 +79,7 @@ fn JobTable(
             <tr>
                 <th>"Id"</th>
                 <th>"Source"</th>
+                <th>"Status"</th>
                 <th>"Action"</th>
             </tr>
             { jobs }
@@ -88,12 +89,14 @@ fn JobTable(
 
 #[component]
 fn JobRow(id: i64, execute_job: Action<ExecuteJob, Result<(), ServerFnError>>) -> impl IntoView {
-    let source = create_resource(|| (), move |_| async move { load_job(id).await });
+    let source = create_resource(|| (), move |_| async move { load_job_source(id).await });
+    let status = create_resource(|| (), move |_| async move { load_job_status(id).await });
     view! {
         <Suspense fallback=move || view! { <> }>
             <tr>
                 <td>{ id }</td>
                 <td>{ source.get() }</td>
+                <td>{ status.get() }</td>
                 <td>
                     <ActionForm action=execute_job>
                         <input type="text" value={ id } hidden={ true } name="job_id"/>
@@ -137,7 +140,12 @@ pub async fn execute_job(job_id: i64) -> Result<(), ServerFnError> {
 }
 
 #[server]
-async fn load_job(id: i64) -> Result<String, ServerFnError> {
+async fn load_job_source(id: i64) -> Result<String, ServerFnError> {
     let source = osprei_storage::job_source(id).await?;
     Ok(source)
+}
+
+#[server]
+async fn load_job_status(_id: i64) -> Result<String, ServerFnError> {
+    Ok("Success".to_string())
 }
