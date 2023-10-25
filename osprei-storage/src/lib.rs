@@ -20,7 +20,7 @@ pub async fn job_ids() -> Result<Vec<i64>, Error> {
 
 pub async fn job_source(id: i64) -> Result<String, Error> {
     let mut conn = db().await?;
-    log::info!("Loading job {}", id);
+    log::info!("Loading job source {}", id);
     let job = sqlx::query_as!(
         JobSource,
         "
@@ -33,6 +33,30 @@ pub async fn job_source(id: i64) -> Result<String, Error> {
     .fetch_one(&mut conn)
     .await?;
     Ok(job.source)
+}
+
+pub async fn job_status(id: i64) -> Result<Option<ExecutionStatus>, Error> {
+    let mut conn = db().await?;
+    log::info!("Loading job status {}", id);
+    let status: Option<ExecutionStatus> = sqlx::query_as!(
+        StatusQuery,
+        "
+        SELECT status
+        FROM (
+            jobs
+            INNER JOIN
+                executions ON executions.job = jobs.id
+        )
+        WHERE jobs.id = $1
+        ORDER BY executions.id DESC
+        LIMIT 1
+        ",
+        id
+    )
+    .fetch_optional(&mut conn)
+    .await?
+    .map(|query| query.status.into());
+    Ok(status)
 }
 
 pub async fn job_create(source: String) -> Result<(), Error> {

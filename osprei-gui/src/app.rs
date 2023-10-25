@@ -146,6 +146,14 @@ async fn load_job_source(id: i64) -> Result<String, ServerFnError> {
 }
 
 #[server]
-async fn load_job_status(_id: i64) -> Result<String, ServerFnError> {
-    Ok("Success".to_string())
+async fn load_job_status(id: i64) -> Result<String, ServerFnError> {
+    let status = osprei_storage::job_status(id).await?;
+    let message = match status {
+        None => "Not executed".to_string(),
+        Some(osprei_storage::ExecutionStatus::Running) => "Running".to_string(),
+        Some(osprei_storage::ExecutionStatus::Success) => "Success".to_string(),
+        Some(osprei_storage::ExecutionStatus::Failure) => "Failure".to_string(),
+        Some(osprei_storage::ExecutionStatus::Unknown) => "Unknown".to_string(),
+    };
+    Ok(message)
 }
