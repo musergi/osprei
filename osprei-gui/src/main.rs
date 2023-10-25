@@ -7,7 +7,7 @@ async fn main() {
     use osprei_gui::app::*;
     use osprei_gui::fileserv::file_and_error_handler;
 
-    simple_logger::init_with_level(log::Level::Debug).expect("couldn't initialize logging");
+    simple_logger::init_with_level(log::Level::Info).expect("couldn't initialize logging");
 
     let conf = get_configuration(None).await.unwrap();
     let leptos_options = conf.leptos_options;

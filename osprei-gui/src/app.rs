@@ -105,19 +105,19 @@ fn JobRow(id: i64, execute_job: Action<ExecuteJob, Result<(), ServerFnError>>) -
     }
 }
 
-#[server(LoadJobList, "/api")]
+#[server]
 async fn load_job_list() -> Result<Vec<i64>, ServerFnError> {
     let jobs = osprei_storage::job_ids().await?;
     Ok(jobs)
 }
 
-#[server(AddJob, "/api")]
+#[server(AddJob)]
 pub async fn add_job(source: String) -> Result<(), ServerFnError> {
     osprei_storage::job_create(source).await?;
     Ok(())
 }
 
-#[server(ExecuteJob, "/api")]
+#[server(ExecuteJob)]
 pub async fn execute_job(job_id: i64) -> Result<(), ServerFnError> {
     log::info!("Running job with id {}", job_id);
     let source = osprei_storage::job_source(job_id).await?;
@@ -127,7 +127,7 @@ pub async fn execute_job(job_id: i64) -> Result<(), ServerFnError> {
         match success {
             true => {
                 let _ = osprei_storage::execution_success(execution_id).await;
-            },
+            }
             _ => {
                 let _ = osprei_storage::execution_failure(execution_id).await;
             }
