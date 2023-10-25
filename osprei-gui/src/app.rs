@@ -39,6 +39,10 @@ fn HomePage() -> impl IntoView {
         move || add_job.version().get(),
         |_| async { load_job_list().await },
     );
+    let execution_list = create_resource(
+        move || execute_job.version().get(),
+        |_| async { load_execution_list().await },
+    );
     view! {
         <Suspense fallback=move || view! { <p>"Loading..."</p> }>
             <div>
@@ -59,6 +63,12 @@ fn HomePage() -> impl IntoView {
             </div>
             <div>
                 <h2>"Executions"</h2>
+                {move || execution_list
+                    .get()
+                    .map(|execution_ids| execution_ids
+                        .map(|execution_ids| view!(<ExecutionTable execution_ids/>))
+                    )
+                }
             </div>
         </Suspense>
 
@@ -105,6 +115,22 @@ fn JobRow(id: i64, execute_job: Action<ExecuteJob, Result<(), ServerFnError>>) -
                 </td>
             </tr>
         </Suspense>
+    }
+}
+
+#[component]
+fn ExecutionTable(execution_ids: Vec<i64>) -> impl IntoView {
+    let rows = execution_ids
+        .into_iter()
+        .map(|id| view! {<tr><td>{id}</td></tr>})
+        .collect_view();
+    view! {
+        <table class="job-table">
+            <tr>
+                <th>"Id"</th>
+            </tr>
+            { rows }
+        </table>
     }
 }
 
@@ -156,4 +182,14 @@ async fn load_job_status(id: i64) -> Result<String, ServerFnError> {
         Some(osprei_storage::ExecutionStatus::Unknown) => "Unknown".to_string(),
     };
     Ok(message)
+}
+
+#[server]
+async fn load_execution_list() -> Result<Vec<i64>, ServerFnError> {
+    Ok(vec![0, 1, 2])
+}
+
+#[server]
+async fn load_execution_status(_id: i64) -> Result<String, ServerFnError> {
+    Ok("Success".to_string())
 }
