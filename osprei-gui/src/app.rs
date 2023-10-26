@@ -105,8 +105,8 @@ fn JobRow(id: i64, execute_job: Action<ExecuteJob, Result<(), ServerFnError>>) -
         <Suspense fallback=move || view! { <> }>
             <tr>
                 <td>{ id }</td>
-                <td>{ source.get() }</td>
-                <td>{ status.get() }</td>
+                <td>{ move || source.get() }</td>
+                <td>{ move || status.get() }</td>
                 <td>
                     <ActionForm action=execute_job>
                         <input type="text" value={ id } hidden={ true } name="job_id"/>
@@ -122,15 +122,32 @@ fn JobRow(id: i64, execute_job: Action<ExecuteJob, Result<(), ServerFnError>>) -
 fn ExecutionTable(execution_ids: Vec<i64>) -> impl IntoView {
     let rows = execution_ids
         .into_iter()
-        .map(|id| view! {<tr><td>{id}</td></tr>})
+        .map(|id| view! { <ExecutionRow id/> })
         .collect_view();
     view! {
         <table class="job-table">
             <tr>
                 <th>"Id"</th>
+                <th>"Status"</th>
             </tr>
             { rows }
         </table>
+    }
+}
+
+#[component]
+fn ExecutionRow(id: i64) -> impl IntoView {
+    let status = create_resource(
+        || (),
+        move |_| async move { load_execution_status(id).await },
+    );
+    view! {
+        <Suspense fallback=move || view! { <> }>
+            <tr>
+                <td>{ id }</td>
+                <td>{ move || status.get() }</td>
+            </tr>
+        </Suspense>
     }
 }
 
