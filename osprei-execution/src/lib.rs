@@ -13,7 +13,23 @@ pub async fn execute(source: String) -> Result<(), Error> {
                 return Err(Error::Checkout);
             }
             if !engine
+                .run(vec!["cargo", "build"], "/workspaces/code", volume.name())
+                .await?
+            {
+                return Err(Error::Execution);
+            }
+            if !engine
                 .run(vec!["cargo", "test"], "/workspaces/code", volume.name())
+                .await?
+            {
+                return Err(Error::Execution);
+            }
+            if !engine
+                .run(
+                    vec!["cargo", "fmt", "--", "--check"],
+                    "/workspaces/code",
+                    volume.name(),
+                )
                 .await?
             {
                 return Err(Error::Execution);
