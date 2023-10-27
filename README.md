@@ -4,6 +4,6 @@ A small wrapper for running rust CI over docker. Run the server, configure and f
 
 ## Roadmap
 
-- Add times to executions
-- Add more steps than test
-- Add test tracking
+- [x] Add times to executions
+- [ ] Add more steps than test
+- [ ] Add test tracking
