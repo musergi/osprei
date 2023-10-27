@@ -2,16 +2,22 @@ pub async fn execute(source: String) -> Result<(), Error> {
     let engine = Engine::new().unwrap();
     engine
         .with_volume(|engine, volume| async move {
-            engine
+            if !engine
                 .run(
                     vec!["git", "clone", &source, "code"],
                     "/workspaces",
                     volume.name(),
                 )
-                .await?;
-            engine
+                .await?
+            {
+                return Err(Error::Checkout);
+            }
+            if !engine
                 .run(vec!["cargo", "test"], "/workspaces/code", volume.name())
-                .await?;
+                .await?
+            {
+                return Err(Error::Execution);
+            }
             Ok(())
         })
         .await
@@ -51,7 +57,7 @@ impl Engine {
         command: impl IntoIterator<Item = S>,
         working_dir: impl serde::Serialize,
         volume: impl std::fmt::Display,
-    ) -> Result<(), Error>
+    ) -> Result<bool, Error>
     where
         S: serde::Serialize,
     {
@@ -66,10 +72,10 @@ impl Engine {
         container.start().await?;
         log::info!("Started container: {}", container.id());
         log::info!("Waiting container: {}", container.id());
-        container.wait().await?;
+        let success = container.wait().await?.status_code == 0;
         container.delete().await?;
         log::info!("Deleted container: {}", container.id());
-        Ok(())
+        Ok(success)
     }
 }
 
