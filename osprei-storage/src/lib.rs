@@ -130,6 +130,29 @@ pub async fn execution_failure(id: i64) -> Result<(), Error> {
     Ok(())
 }
 
+pub async fn execution_ids() -> Result<Vec<i64>, Error> {
+    let mut conn = db().await?;
+    log::info!("Getting executions");
+    let ids = sqlx::query_as!(
+        ExecutionQuery,
+        "
+        SELECT id
+        FROM executions
+        ORDER BY id DESC
+        "
+    )
+    .fetch_all(&mut conn)
+    .await?
+    .into_iter()
+    .map(|query| query.id)
+    .collect();
+    Ok(ids)
+}
+
+struct ExecutionQuery {
+    id: i64,
+}
+
 struct StatusQuery {
     status: Option<i64>,
 }

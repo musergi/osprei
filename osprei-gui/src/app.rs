@@ -169,12 +169,11 @@ pub async fn execute_job(job_id: i64) -> Result<(), ServerFnError> {
     let source = osprei_storage::job_source(job_id).await?;
     let execution_id = osprei_storage::execution_create(job_id).await?;
     tokio::spawn(async move {
-        let success = osprei_execution::execute(source).await;
-        match success {
-            true => {
+        match osprei_execution::execute(source).await {
+            Ok(()) => {
                 let _ = osprei_storage::execution_success(execution_id).await;
             }
-            _ => {
+            Err(_) => {
                 let _ = osprei_storage::execution_failure(execution_id).await;
             }
         }
@@ -203,10 +202,18 @@ async fn load_job_status(id: i64) -> Result<String, ServerFnError> {
 
 #[server]
 async fn load_execution_list() -> Result<Vec<i64>, ServerFnError> {
-    Ok(vec![0, 1, 2])
+    let executions = osprei_storage::execution_ids().await?;
+    Ok(executions)
 }
 
 #[server]
-async fn load_execution_status(_id: i64) -> Result<String, ServerFnError> {
-    Ok("Success".to_string())
+async fn load_execution_status(id: i64) -> Result<String, ServerFnError> {
+    let status = osprei_storage::execution_status(id).await?;
+    let message = match status {
+        osprei_storage::ExecutionStatus::Running => "Running".to_string(),
+        osprei_storage::ExecutionStatus::Success => "Success".to_string(),
+        osprei_storage::ExecutionStatus::Failure => "Failure".to_string(),
+        osprei_storage::ExecutionStatus::Unknown => "Unknown".to_string(),
+    };
+    Ok(message)
 }

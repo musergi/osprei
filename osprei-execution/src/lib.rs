@@ -1,4 +1,4 @@
-pub async fn execute(source: String) -> bool {
+pub async fn execute(source: String) -> Result<(), Error> {
     let engine = Engine::new().unwrap();
     engine
         .with_volume(|engine, volume| async move {
@@ -15,8 +15,6 @@ pub async fn execute(source: String) -> bool {
             Ok(())
         })
         .await
-        .unwrap();
-    true
 }
 
 #[derive(Clone)]
@@ -78,6 +76,8 @@ impl Engine {
 #[derive(Debug)]
 pub enum Error {
     Docker(docker_api::Error),
+    Checkout,
+    Execution,
 }
 
 impl From<docker_api::Error> for Error {
