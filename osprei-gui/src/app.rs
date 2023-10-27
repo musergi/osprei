@@ -129,6 +129,7 @@ fn ExecutionTable(execution_ids: Vec<i64>) -> impl IntoView {
             <tr>
                 <th>"Id"</th>
                 <th>"Status"</th>
+                <th>"Duration"</th>
             </tr>
             { rows }
         </table>
@@ -141,11 +142,25 @@ fn ExecutionRow(id: i64) -> impl IntoView {
         || (),
         move |_| async move { load_execution_status(id).await },
     );
+    let duration = create_resource(
+        || (),
+        move |_| async move { load_execution_duration(id).await },
+    );
+    let duration_string = move || {
+        duration.get().map(|duration| {
+            duration.map(|duration| {
+                duration
+                    .map(|v| format!("{v} secs"))
+                    .unwrap_or("-".to_string())
+            })
+        })
+    };
     view! {
         <Suspense fallback=move || view! { <> }>
             <tr>
                 <td>{ id }</td>
                 <td>{ move || status.get() }</td>
+                <td>{ duration_string }</td>
             </tr>
         </Suspense>
     }
@@ -216,4 +231,10 @@ async fn load_execution_status(id: i64) -> Result<String, ServerFnError> {
         osprei_storage::ExecutionStatus::Unknown => "Unknown".to_string(),
     };
     Ok(message)
+}
+
+#[server]
+async fn load_execution_duration(id: i64) -> Result<Option<i64>, ServerFnError> {
+    let duration = osprei_storage::execution_duration(id).await?;
+    Ok(duration)
 }

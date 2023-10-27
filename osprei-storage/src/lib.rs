@@ -119,11 +119,12 @@ async fn execution_set_status(id: i64, status: i64) -> Result<(), Error> {
         "
         UPDATE executions
         SET
-            status = 1,
+            status = $2,
             end_time = datetime('now')
         WHERE id = $1
         ",
-        id
+        id,
+        status
     )
     .execute(&mut conn)
     .await?;
@@ -155,7 +156,7 @@ pub async fn execution_duration(id: i64) -> Result<Option<i64>, Error> {
     let duration = sqlx::query_as!(
         DurationQuery,
         "
-        SELECT end_time - start_time AS duration
+        SELECT unixepoch(end_time) - unixepoch(start_time) AS duration
         FROM executions
         WHERE id = $1
         ",
