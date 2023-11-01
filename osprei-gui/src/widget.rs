@@ -1,6 +1,6 @@
 use crate::server::*;
-use leptos_router::*;
 use leptos::*;
+use leptos_router::*;
 
 #[component]
 pub fn JobTable(
@@ -9,7 +9,7 @@ pub fn JobTable(
 ) -> impl IntoView {
     let jobs = job_ids
         .into_iter()
-        .map(|id| view! {<JobRow id execute_job/>})
+        .map(|id| view! { <JobRow id execute_job/> })
         .collect_view();
     view! {
         <table class="job-table">
@@ -20,7 +20,7 @@ pub fn JobTable(
                 <th>"Action"</th>
             </tr>
 
-            { jobs }
+            {jobs}
         </table>
     }
 }
@@ -30,20 +30,78 @@ fn JobRow(id: i64, execute_job: Action<ExecuteJob, Result<(), ServerFnError>>) -
     let source = create_resource(|| (), move |_| async move { load_job_source(id).await });
     let status = create_resource(|| (), move |_| async move { load_job_status(id).await });
     view! {
-        <Suspense fallback=move || view! { <> }>
+        <Suspense fallback=move || view! { <></> }>
             <tr>
-                <td>{ id }</td>
-                <td>{ move || source.get() }</td>
-                <td>{ move || status.get() }</td>
+                <td>{id}</td>
+                <td>{move || source.get()}</td>
+                <td>{move || status.get()}</td>
                 <td>
                     <ActionForm action=execute_job>
-                        <input type="text" value={ id } hidden={ true } name="job_id"/>
+                        <input type="text" value=id hidden=true name="job_id"/>
                         <input type="submit" value="Run"/>
                     </ActionForm>
                     <A href=format!("/job/{id}")>"Details"</A>
                 </td>
             </tr>
         </Suspense>
+    }
+}
+
+pub struct Job {
+    pub id: i64,
+    pub source: String,
+    pub status: String,
+}
+
+#[component]
+pub fn new_job_table(
+    jobs: Vec<Job>,
+    action: Action<ExecuteJob, Result<(), ServerFnError>>,
+) -> impl IntoView {
+    let rows = jobs
+        .into_iter()
+        .map(|job| view! { <Row job action/> })
+        .collect_view();
+    view! {
+        <table class="job-table">
+            <Header/>
+            {rows}
+        </table>
+    }
+}
+
+#[component]
+fn header() -> impl IntoView {
+    view! {
+        <tr>
+            <th>"Id"</th>
+            <th>"Source"</th>
+            <th>"Status"</th>
+            <th>"Action"</th>
+        </tr>
+    }
+}
+
+#[component]
+fn row(job: Job, action: Action<ExecuteJob, Result<(), ServerFnError>>) -> impl IntoView {
+    let Job { id, source, status } = job;
+    view! {
+        <td>{id}</td>
+        <td>{source}</td>
+        <td>{status}</td>
+        <td>
+            <RunButton id action/>
+        </td>
+    }
+}
+
+#[component]
+fn run_button(id: i64, action: Action<ExecuteJob, Result<(), ServerFnError>>) -> impl IntoView {
+    view! {
+        <ActionForm action>
+            <input type="text" value=id hidden=true name="job_id"/>
+            <input type="submit" value="Run"/>
+        </ActionForm>
     }
 }
 
@@ -60,7 +118,7 @@ pub fn ExecutionTable(execution_ids: Vec<i64>) -> impl IntoView {
                 <th>"Status"</th>
                 <th>"Duration"</th>
             </tr>
-            { rows }
+            {rows}
         </table>
     }
 }
@@ -85,12 +143,13 @@ fn ExecutionRow(id: i64) -> impl IntoView {
         })
     };
     view! {
-        <Suspense fallback=move || view! { <> }>
+        <Suspense fallback=move || view! { <></> }>
             <tr>
-                <td>{ id }</td>
-                <td>{ move || status.get() }</td>
-                <td>{ duration_string }</td>
+                <td>{id}</td>
+                <td>{move || status.get()}</td>
+                <td>{duration_string}</td>
             </tr>
         </Suspense>
     }
 }
+

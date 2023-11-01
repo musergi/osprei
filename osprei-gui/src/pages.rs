@@ -1,8 +1,8 @@
 use crate::server::*;
+use crate::widget::ExecutionTable;
+use crate::widget::JobTable;
 use leptos::*;
 use leptos_router::*;
-use crate::widget::JobTable;
-use crate::widget::ExecutionTable;
 
 #[component]
 pub fn HomePage() -> impl IntoView {
@@ -20,31 +20,32 @@ pub fn HomePage() -> impl IntoView {
         <Suspense fallback=move || view! { <p>"Loading..."</p> }>
             <div>
                 <h2>"Jobs"</h2>
-                {move || job_list
-                    .get()
-                    .map(|job_ids| job_ids
-                        .map(|job_ids| view!{<JobTable job_ids execute_job/>})
-                    )
-                }
+                {move || {
+                    job_list
+                        .get()
+                        .map(|job_ids| {
+                            job_ids.map(|job_ids| view! { <JobTable job_ids execute_job/> })
+                        })
+                }}
+
                 <ActionForm class="add-job-form" action=add_job>
-                    <label>
-                        "Source"
-                        <input type="text" name="source"/>
-                    </label>
+                    <label>"Source" <input type="text" name="source"/></label>
                     <input type="submit" value="Add"/>
                 </ActionForm>
             </div>
             <div>
                 <h2>"Executions"</h2>
-                {move || execution_list
-                    .get()
-                    .map(|execution_ids| execution_ids
-                        .map(|execution_ids| view!(<ExecutionTable execution_ids/>))
-                    )
-                }
+                {move || {
+                    execution_list
+                        .get()
+                        .map(|execution_ids| {
+                            execution_ids
+                                .map(|execution_ids| view! { <ExecutionTable execution_ids/> })
+                        })
+                }}
+
             </div>
         </Suspense>
-
     }
 }
 
@@ -55,9 +56,6 @@ pub fn job() -> impl IntoView {
         move || params.with(|p| p.get("id").cloned().unwrap_or_default()),
         |id| async move { load_job_source(id.parse().unwrap()).await },
     );
-    view! {
-        <p>
-            {move || source.get()}
-        </p>
-    }
+    view! { <p>{move || source.get()}</p> }
 }
+

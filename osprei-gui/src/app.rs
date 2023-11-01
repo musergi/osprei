@@ -15,20 +15,18 @@ pub fn App() -> impl IntoView {
         <Router fallback=|| {
             let mut outside_errors = Errors::default();
             outside_errors.insert_with_default_key(AppError::NotFound);
-            view! {
-                <ErrorTemplate outside_errors/>
-            }
-            .into_view()
+            view! { <ErrorTemplate outside_errors/> }.into_view()
         }>
             <header>
                 <h1>"Osprei"</h1>
             </header>
             <main>
                 <Routes>
-                    <Route path="" view=HomePage />
-                    <Route path="/job/:id" view=Job />
+                    <Route path="" view=HomePage/>
+                    <Route path="/job/:id" view=Job/>
                 </Routes>
             </main>
         </Router>
     }
 }
+
