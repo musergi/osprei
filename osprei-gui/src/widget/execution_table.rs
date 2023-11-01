@@ -50,4 +50,3 @@ fn row(execution: Execution) -> impl IntoView {
         </tr>
     }
 }
-

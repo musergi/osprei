@@ -10,11 +10,7 @@ pub async fn load_jobs() -> Result<Vec<widget::Job>, ServerFnError> {
     for id in ids {
         let source = load_job_source(id).await?;
         let status = load_job_status(id).await?;
-        let job = widget::Job {
-            id,
-            source,
-            status,
-        };
+        let job = widget::Job { id, source, status };
         jobs.push(job);
     }
     Ok(jobs)
@@ -110,21 +106,3 @@ pub async fn load_execution_duration(id: i64) -> Result<Option<i64>, ServerFnErr
     let duration = osprei_storage::execution_duration(id).await?;
     Ok(duration)
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

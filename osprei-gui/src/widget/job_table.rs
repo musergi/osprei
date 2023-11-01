@@ -70,4 +70,3 @@ fn details_button(id: i64) -> impl IntoView {
         </A>
     }
 }
-
