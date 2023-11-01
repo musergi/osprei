@@ -12,9 +12,9 @@ pub fn HomePage() -> impl IntoView {
         move || (add_job.version().get(), execute_job.version().get()),
         |_| async { load_jobs().await },
     );
-    let execution_list = create_resource(
+    let executions = create_resource(
         move || execute_job.version().get(),
-        |_| async { load_execution_list().await },
+        |_| async { load_executions().await },
     );
     
     view! {
@@ -38,11 +38,10 @@ pub fn HomePage() -> impl IntoView {
             <div>
                 <h2>"Executions"</h2>
                 {move || {
-                    execution_list
+                    executions
                         .get()
-                        .map(|execution_ids| {
-                            execution_ids
-                                .map(|execution_ids| view! { <ExecutionTable execution_ids/> })
+                        .map(|executions| {
+                            executions.map(|executions| view! { <ExecutionTable executions/> })
                         })
                 }}
 
@@ -60,6 +59,10 @@ pub fn job() -> impl IntoView {
     );
     view! { <p>{move || source.get()}</p> }
 }
+
+
+
+
 
 
 

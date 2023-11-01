@@ -21,6 +21,23 @@ pub async fn load_jobs() -> Result<Vec<widget::Job>, ServerFnError> {
 }
 
 #[server]
+pub async fn load_executions() -> Result<Vec<widget::Execution>, ServerFnError> {
+    let ids = load_execution_list().await?;
+    let mut executions = Vec::new();
+    for id in ids {
+        let status = load_execution_status(id).await?;
+        let duration = load_execution_duration(id).await?;
+        let execution = widget::Execution {
+            id,
+            status,
+            duration,
+        };
+        executions.push(execution);
+    }
+    Ok(executions)
+}
+
+#[server]
 pub async fn load_job_list() -> Result<Vec<i64>, ServerFnError> {
     let jobs = osprei_storage::job_ids().await?;
     Ok(jobs)
@@ -93,6 +110,11 @@ pub async fn load_execution_duration(id: i64) -> Result<Option<i64>, ServerFnErr
     let duration = osprei_storage::execution_duration(id).await?;
     Ok(duration)
 }
+
+
+
+
+
 
 
 
