@@ -29,6 +29,37 @@ body {
 	display: inline;
 }
 
+.job-table .run-button {
+	background-color: #00FF00AA;
+	border: none;
+	border-radius: 0.4em;
+	padding: 0.4em 1em;
+	text-align: center;
+	text-decoration: none;
+	display: inline-block;
+	margin: 0 0.25em;
+}
+
+.job-table .run-button:hover {
+	background-color: #00FF00FF;
+}
+
+.job-table .details-button {
+	color: inherit;
+	background-color: #FFFF00AA;
+	border: none;
+	border-radius: 0.4em;
+	padding: 0.4em 1em;
+	text-align: center;
+	text-decoration: none;
+	display: inline-block;
+	margin: 0 0.25em;
+}
+
+.job-table .details-button:hover {
+	background-color: #FFFF00FF;
+}
+
 .add-job-form {
 	padding: 1em 0;
 }

@@ -47,6 +47,7 @@ fn row(job: Job, action: Action<ExecuteJob, Result<(), ServerFnError>>) -> impl 
         <td>{status}</td>
         <td>
             <RunButton id action/>
+            <DetailsButton id/>
         </td>
     }
 }
@@ -56,8 +57,17 @@ fn run_button(id: i64, action: Action<ExecuteJob, Result<(), ServerFnError>>) ->
     view! {
         <ActionForm action>
             <input type="text" value=id hidden=true name="job_id"/>
-            <input type="submit" value="Run"/>
+            <input class="run-button" type="submit" value="Run"/>
         </ActionForm>
+    }
+}
+
+#[component]
+fn details_button(id: i64) -> impl IntoView {
+    view! {
+        <A class="details-button" href=format!("/job/{id}")>
+            "Details"
+        </A>
     }
 }
 
@@ -108,6 +118,13 @@ fn ExecutionRow(id: i64) -> impl IntoView {
         </Suspense>
     }
 }
+
+
+
+
+
+
+
 
 
 
