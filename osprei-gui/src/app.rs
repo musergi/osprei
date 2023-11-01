@@ -24,7 +24,8 @@ pub fn App() -> impl IntoView {
             </header>
             <main>
                 <Routes>
-                    <Route path="" view=HomePage/>
+                    <Route path="" view=HomePage />
+                    <Route path="/job/:id" view=Job />
                 </Routes>
             </main>
         </Router>
@@ -112,6 +113,7 @@ fn JobRow(id: i64, execute_job: Action<ExecuteJob, Result<(), ServerFnError>>) -
                         <input type="text" value={ id } hidden={ true } name="job_id"/>
                         <input type="submit" value="Run"/>
                     </ActionForm>
+                    <A href=format!("/job/{id}")>"Details"</A>
                 </td>
             </tr>
         </Suspense>
@@ -163,6 +165,22 @@ fn ExecutionRow(id: i64) -> impl IntoView {
                 <td>{ duration_string }</td>
             </tr>
         </Suspense>
+    }
+}
+
+#[component]
+fn Job() -> impl IntoView {
+    let params = use_params_map();
+    view! {
+        <h1>
+            {move || params
+                .with(|p| p
+                    .get("id")
+                    .cloned()
+                    .unwrap_or_default()
+                )
+            }
+        </h1>
     }
 }
 

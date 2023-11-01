@@ -11,3 +11,12 @@ CREATE TABLE IF NOT EXISTS executions (
     end_time INTEGER,
     FOREIGN KEY(job) REFERENCES jobs(id)
 );
+
+CREATE TABLE IF NOT EXISTS stages (
+    id INTEGER PRIMARY KEY,
+    dependency INTEGER,
+    job INTEGER,
+    definition TEXT NOT NULL,
+    FOREIGN KEY(job) REFERENCES jobs(id),
+    FOREIGN KEY(dependency) REFERENCES stages(id)
+)

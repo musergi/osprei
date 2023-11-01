@@ -168,6 +168,20 @@ pub async fn execution_duration(id: i64) -> Result<Option<i64>, Error> {
     Ok(duration)
 }
 
+pub async fn stage_create(job_id: i64, dependency: i64, definition: String) -> Result<(), Error> {
+    let mut conn = db().await?;
+    log::info!("Creating stage for {job_id}");
+    sqlx::query!(
+        "INSERT INTO stages (job, dependency, definition) VALUES ($1, $2, $3)",
+        job_id,
+        dependency,
+        definition
+    )
+    .execute(&mut conn)
+    .await?;
+    Ok(())
+}
+
 struct DurationQuery {
     duration: Option<i64>,
 }
