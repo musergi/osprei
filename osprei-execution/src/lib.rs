@@ -1,4 +1,24 @@
+pub struct Stage {
+    command: Vec<String>,
+}
+
 pub async fn execute(source: String) -> Result<(), Error> {
+    let stages = vec![
+        Stage {
+            command: vec!["cargo".to_string(), "build".to_string()],
+        },
+        Stage {
+            command: vec!["cargo".to_string(), "test".to_string()],
+        },
+        Stage {
+            command: vec![
+                "cargo".to_string(),
+                "fmt".to_string(),
+                "--".to_string(),
+                "--check".to_string(),
+            ],
+        },
+    ];
     let engine = Engine::new().unwrap();
     engine
         .with_volume(|engine, volume| async move {
@@ -12,27 +32,13 @@ pub async fn execute(source: String) -> Result<(), Error> {
             {
                 return Err(Error::Checkout);
             }
-            if !engine
-                .run(vec!["cargo", "build"], "/workspaces/code", volume.name())
-                .await?
-            {
-                return Err(Error::Execution);
-            }
-            if !engine
-                .run(vec!["cargo", "test"], "/workspaces/code", volume.name())
-                .await?
-            {
-                return Err(Error::Execution);
-            }
-            if !engine
-                .run(
-                    vec!["cargo", "fmt", "--", "--check"],
-                    "/workspaces/code",
-                    volume.name(),
-                )
-                .await?
-            {
-                return Err(Error::Execution);
+            for stage in stages {
+                if !engine
+                    .run(stage.command, "/workspaces/code", volume.name())
+                    .await?
+                {
+                    return Err(Error::Execution);
+                }
             }
             Ok(())
         })
