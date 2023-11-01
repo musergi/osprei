@@ -2,51 +2,6 @@ use crate::server::*;
 use leptos::*;
 use leptos_router::*;
 
-#[component]
-pub fn JobTable(
-    job_ids: Vec<i64>,
-    execute_job: Action<ExecuteJob, Result<(), ServerFnError>>,
-) -> impl IntoView {
-    let jobs = job_ids
-        .into_iter()
-        .map(|id| view! { <JobRow id execute_job/> })
-        .collect_view();
-    view! {
-        <table class="job-table">
-            <tr>
-                <th>"Id"</th>
-                <th>"Source"</th>
-                <th>"Status"</th>
-                <th>"Action"</th>
-            </tr>
-
-            {jobs}
-        </table>
-    }
-}
-
-#[component]
-fn JobRow(id: i64, execute_job: Action<ExecuteJob, Result<(), ServerFnError>>) -> impl IntoView {
-    let source = create_resource(|| (), move |_| async move { load_job_source(id).await });
-    let status = create_resource(|| (), move |_| async move { load_job_status(id).await });
-    view! {
-        <Suspense fallback=move || view! { <></> }>
-            <tr>
-                <td>{id}</td>
-                <td>{move || source.get()}</td>
-                <td>{move || status.get()}</td>
-                <td>
-                    <ActionForm action=execute_job>
-                        <input type="text" value=id hidden=true name="job_id"/>
-                        <input type="submit" value="Run"/>
-                    </ActionForm>
-                    <A href=format!("/job/{id}")>"Details"</A>
-                </td>
-            </tr>
-        </Suspense>
-    }
-}
-
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub struct Job {
     pub id: i64,
@@ -55,7 +10,7 @@ pub struct Job {
 }
 
 #[component]
-pub fn new_job_table(
+pub fn job_table(
     jobs: Vec<Job>,
     action: Action<ExecuteJob, Result<(), ServerFnError>>,
 ) -> impl IntoView {
@@ -153,6 +108,8 @@ fn ExecutionRow(id: i64) -> impl IntoView {
         </Suspense>
     }
 }
+
+
 
 
 

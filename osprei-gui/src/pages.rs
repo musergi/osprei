@@ -1,6 +1,6 @@
 use crate::server::*;
 use crate::widget::ExecutionTable;
-use crate::widget::NewJobTable;
+use crate::widget::JobTable;
 use leptos::*;
 use leptos_router::*;
 
@@ -24,7 +24,9 @@ pub fn HomePage() -> impl IntoView {
                 {move || {
                     jobs.get()
                         .map(|jobs| {
-                            jobs.map(|jobs| view! { <NewJobTable jobs action=execute_job/> })
+                            jobs.map(|jobs| {
+                                view! { <JobTable jobs action=execute_job/> }
+                            })
                         })
                 }}
 
@@ -58,6 +60,9 @@ pub fn job() -> impl IntoView {
     );
     view! { <p>{move || source.get()}</p> }
 }
+
+
+
 
 
 
