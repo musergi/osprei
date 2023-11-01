@@ -184,7 +184,8 @@ pub async fn execute_job(job_id: i64) -> Result<(), ServerFnError> {
     let source = osprei_storage::job_source(job_id).await?;
     let execution_id = osprei_storage::execution_create(job_id).await?;
     tokio::spawn(async move {
-        match osprei_execution::execute(source).await {
+        let stages = vec![];
+        match osprei_execution::execute(source, stages).await {
             Ok(()) => {
                 let _ = osprei_storage::execution_success(execution_id).await;
             }

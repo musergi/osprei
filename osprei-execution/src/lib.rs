@@ -1,24 +1,8 @@
 pub struct Stage {
-    command: Vec<String>,
+    pub command: Vec<String>,
 }
 
-pub async fn execute(source: String) -> Result<(), Error> {
-    let stages = vec![
-        Stage {
-            command: vec!["cargo".to_string(), "build".to_string()],
-        },
-        Stage {
-            command: vec!["cargo".to_string(), "test".to_string()],
-        },
-        Stage {
-            command: vec![
-                "cargo".to_string(),
-                "fmt".to_string(),
-                "--".to_string(),
-                "--check".to_string(),
-            ],
-        },
-    ];
+pub async fn execute(source: String, stages: Vec<Stage>) -> Result<(), Error> {
     let engine = Engine::new().unwrap();
     engine
         .with_volume(|engine, volume| async move {
