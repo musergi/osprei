@@ -1,4 +1,5 @@
 use crate::error_template::{AppError, ErrorTemplate};
+use crate::server::*;
 use leptos::*;
 use leptos_meta::*;
 use leptos_router::*;
@@ -169,91 +170,15 @@ fn ExecutionRow(id: i64) -> impl IntoView {
 }
 
 #[component]
-fn Job() -> impl IntoView {
+fn job() -> impl IntoView {
     let params = use_params_map();
+    let source = create_resource(
+        move || params.with(|p| p.get("id").cloned().unwrap_or_default()),
+        |id| async move { load_job_source(id.parse().unwrap()).await },
+    );
     view! {
-        <h1>
-            {move || params
-                .with(|p| p
-                    .get("id")
-                    .cloned()
-                    .unwrap_or_default()
-                )
-            }
-        </h1>
+        <p>
+            {move || source.get()}
+        </p>
     }
-}
-
-#[server]
-async fn load_job_list() -> Result<Vec<i64>, ServerFnError> {
-    let jobs = osprei_storage::job_ids().await?;
-    Ok(jobs)
-}
-
-#[server(AddJob)]
-pub async fn add_job(source: String) -> Result<(), ServerFnError> {
-    osprei_storage::job_create(source).await?;
-    Ok(())
-}
-
-#[server(ExecuteJob)]
-pub async fn execute_job(job_id: i64) -> Result<(), ServerFnError> {
-    log::info!("Running job with id {}", job_id);
-    let source = osprei_storage::job_source(job_id).await?;
-    let execution_id = osprei_storage::execution_create(job_id).await?;
-    tokio::spawn(async move {
-        let stages = vec![];
-        match osprei_execution::execute(source, stages).await {
-            Ok(()) => {
-                let _ = osprei_storage::execution_success(execution_id).await;
-            }
-            Err(_) => {
-                let _ = osprei_storage::execution_failure(execution_id).await;
-            }
-        }
-    });
-    Ok(())
-}
-
-#[server]
-async fn load_job_source(id: i64) -> Result<String, ServerFnError> {
-    let source = osprei_storage::job_source(id).await?;
-    Ok(source)
-}
-
-#[server]
-async fn load_job_status(id: i64) -> Result<String, ServerFnError> {
-    let status = osprei_storage::job_status(id).await?;
-    let message = match status {
-        None => "Not executed".to_string(),
-        Some(osprei_storage::ExecutionStatus::Running) => "Running".to_string(),
-        Some(osprei_storage::ExecutionStatus::Success) => "Success".to_string(),
-        Some(osprei_storage::ExecutionStatus::Failure) => "Failure".to_string(),
-        Some(osprei_storage::ExecutionStatus::Unknown) => "Unknown".to_string(),
-    };
-    Ok(message)
-}
-
-#[server]
-async fn load_execution_list() -> Result<Vec<i64>, ServerFnError> {
-    let executions = osprei_storage::execution_ids().await?;
-    Ok(executions)
-}
-
-#[server]
-async fn load_execution_status(id: i64) -> Result<String, ServerFnError> {
-    let status = osprei_storage::execution_status(id).await?;
-    let message = match status {
-        osprei_storage::ExecutionStatus::Running => "Running".to_string(),
-        osprei_storage::ExecutionStatus::Success => "Success".to_string(),
-        osprei_storage::ExecutionStatus::Failure => "Failure".to_string(),
-        osprei_storage::ExecutionStatus::Unknown => "Unknown".to_string(),
-    };
-    Ok(message)
-}
-
-#[server]
-async fn load_execution_duration(id: i64) -> Result<Option<i64>, ServerFnError> {
-    let duration = osprei_storage::execution_duration(id).await?;
-    Ok(duration)
 }
