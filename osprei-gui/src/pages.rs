@@ -1,6 +1,6 @@
 use crate::server::*;
 use crate::widget::ExecutionTable;
-use crate::widget::JobTable;
+use crate::widget::NewJobTable;
 use leptos::*;
 use leptos_router::*;
 
@@ -8,23 +8,23 @@ use leptos_router::*;
 pub fn HomePage() -> impl IntoView {
     let add_job = create_server_action::<AddJob>();
     let execute_job = create_server_action::<ExecuteJob>();
-    let job_list = create_resource(
-        move || add_job.version().get(),
-        |_| async { load_job_list().await },
+    let jobs = create_resource(
+        move || (add_job.version().get(), execute_job.version().get()),
+        |_| async { load_jobs().await },
     );
     let execution_list = create_resource(
         move || execute_job.version().get(),
         |_| async { load_execution_list().await },
     );
+    
     view! {
         <Suspense fallback=move || view! { <p>"Loading..."</p> }>
             <div>
                 <h2>"Jobs"</h2>
                 {move || {
-                    job_list
-                        .get()
-                        .map(|job_ids| {
-                            job_ids.map(|job_ids| view! { <JobTable job_ids execute_job/> })
+                    jobs.get()
+                        .map(|jobs| {
+                            jobs.map(|jobs| view! { <NewJobTable jobs action=execute_job/> })
                         })
                 }}
 
@@ -58,4 +58,13 @@ pub fn job() -> impl IntoView {
     );
     view! { <p>{move || source.get()}</p> }
 }
+
+
+
+
+
+
+
+
+
 

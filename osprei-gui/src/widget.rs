@@ -47,6 +47,7 @@ fn JobRow(id: i64, execute_job: Action<ExecuteJob, Result<(), ServerFnError>>) -
     }
 }
 
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub struct Job {
     pub id: i64,
     pub source: String,
@@ -152,4 +153,6 @@ fn ExecutionRow(id: i64) -> impl IntoView {
         </Suspense>
     }
 }
+
+
 

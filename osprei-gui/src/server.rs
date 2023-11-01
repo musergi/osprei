@@ -1,6 +1,25 @@
 use leptos::server;
 use leptos::ServerFnError;
 
+use crate::widget;
+
+#[server]
+pub async fn load_jobs() -> Result<Vec<widget::Job>, ServerFnError> {
+    let ids = osprei_storage::job_ids().await?;
+    let mut jobs = Vec::new();
+    for id in ids {
+        let source = load_job_source(id).await?;
+        let status = load_job_status(id).await?;
+        let job = widget::Job {
+            id,
+            source,
+            status,
+        };
+        jobs.push(job);
+    }
+    Ok(jobs)
+}
+
 #[server]
 pub async fn load_job_list() -> Result<Vec<i64>, ServerFnError> {
     let jobs = osprei_storage::job_ids().await?;
@@ -74,3 +93,16 @@ pub async fn load_execution_duration(id: i64) -> Result<Option<i64>, ServerFnErr
     let duration = osprei_storage::execution_duration(id).await?;
     Ok(duration)
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
