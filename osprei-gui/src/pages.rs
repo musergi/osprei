@@ -5,7 +5,7 @@ use leptos::*;
 use leptos_router::*;
 
 #[component]
-pub fn HomePage() -> impl IntoView {
+pub fn home() -> impl IntoView {
     let add_job = create_server_action::<AddJob>();
     let execute_job = create_server_action::<ExecuteJob>();
     let jobs = create_resource(

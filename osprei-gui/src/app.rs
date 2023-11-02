@@ -22,7 +22,7 @@ pub fn App() -> impl IntoView {
             </header>
             <main>
                 <Routes>
-                    <Route path="" view=HomePage/>
+                    <Route path="" view=Home/>
                     <Route path="/job/:id" view=Job/>
                 </Routes>
             </main>
