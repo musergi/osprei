@@ -158,7 +158,7 @@ pub struct Stage {
 
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct Defintion {
-    name: String,
+    pub name: String,
     command: Vec<String>,
     environment: Vec<EnvironmentVariable>,
 }
@@ -179,7 +179,7 @@ pub async fn stages(job_id: i64) -> Result<Vec<Stage>, Error> {
     }
     let query = sqlx::query_as!(
         Query,
-        "SELECT id, dependency, definition FROM stages WHERE job = $1",
+        "SELECT id, dependency, definition FROM stages WHERE job = $1 ORDER BY id",
         job_id
     )
     .fetch_all(&mut conn)

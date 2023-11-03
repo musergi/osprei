@@ -23,3 +23,5 @@ CREATE TABLE IF NOT EXISTS stages (
 
 INSERT INTO jobs (source) VALUES ('https://github.com/musergi/osprei.git');
 INSERT INTO stages (dependency, job, definition) VALUES (NULL, 1, '{"name":"cargo build","command":["cargo","build"],"environment":[]}');
+INSERT INTO stages (dependency, job, definition) VALUES (1, 1, '{"name":"cargo test","command":["cargo","test"],"environment":[]}');
+INSERT INTO stages (dependency, job, definition) VALUES (1, 1, '{"name":"cargo check","command":["cargo","check"],"environment":[]}');

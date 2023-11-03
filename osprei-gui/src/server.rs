@@ -34,34 +34,23 @@ pub async fn load_executions() -> Result<Vec<widget::Execution>, ServerFnError> 
 }
 
 #[server]
-pub async fn load_stages(_job_id: i64) -> Result<Vec<widget::Stage>, ServerFnError> {
-    Ok(vec![
-        widget::Stage {
-            id: 1,
-            dependency: None,
-            description: "checkout".to_string(),
-        },
-        widget::Stage {
-            id: 2,
-            dependency: Some(1),
-            description: "cargo build".to_string(),
-        },
-        widget::Stage {
-            id: 3,
-            dependency: Some(1),
-            description: "cargo fmt".to_string(),
-        },
-        widget::Stage {
-            id: 4,
-            dependency: Some(2),
-            description: "cargo test".to_string(),
-        },
-        widget::Stage {
-            id: 5,
-            dependency: Some(2),
-            description: "cargo check".to_string(),
-        },
-    ])
+pub async fn load_stages(job_id: i64) -> Result<Vec<widget::Stage>, ServerFnError> {
+    let stages = osprei_storage::stages(job_id)
+        .await?
+        .into_iter()
+        .map(
+            |osprei_storage::Stage {
+                 id,
+                 dependency,
+                 definition,
+             }| widget::Stage {
+                id,
+                dependency,
+                description: definition.name,
+            },
+        )
+        .collect();
+    Ok(stages)
 }
 
 #[server]
