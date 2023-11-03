@@ -19,4 +19,4 @@ CREATE TABLE IF NOT EXISTS stages (
     definition TEXT NOT NULL,
     FOREIGN KEY(job) REFERENCES jobs(id),
     FOREIGN KEY(dependency) REFERENCES stages(id)
-)
+);

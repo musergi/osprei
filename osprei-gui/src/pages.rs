@@ -1,6 +1,7 @@
 use crate::server::*;
 use crate::widget::ExecutionTable;
 use crate::widget::JobTable;
+use crate::widget::Stages;
 use leptos::*;
 use leptos_router::*;
 
@@ -60,11 +61,15 @@ pub fn job() -> impl IntoView {
     let status = create_resource(job_id, |id| async move {
         load_job_status(id.parse().unwrap()).await
     });
+    let stages = create_resource(job_id, |id| async move {
+        load_stages(id.parse().unwrap()).await
+    });
     view! {
         <Suspense fallback=move || view! { <p>"Loading..."</p> }>
             <ErrorBoundary fallback=|errors| view! { <ErrorTemplate errors/> }>
                 <p>{move || source.get()}</p>
                 <p>{move || status.get()}</p>
+                {move || stages.get().map(|stages| stages.map(|stages| view! { <Stages stages/> }))}
             </ErrorBoundary>
         </Suspense>
     }
