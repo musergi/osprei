@@ -2,87 +2,7 @@ use sqlx::Connection;
 
 pub mod job;
 
-pub async fn execution_create(job_id: i64) -> Result<i64, Error> {
-    let mut conn = db().await?;
-    log::info!("Creating execution for job {}", job_id);
-    let execution_id = sqlx::query!(
-        "
-        INSERT INTO executions (job, start_time)
-        VALUES ($1, datetime('now'))
-        ",
-        job_id
-    )
-    .execute(&mut conn)
-    .await?
-    .last_insert_rowid();
-    Ok(execution_id)
-}
-
-pub async fn execution_status(id: i64) -> Result<ExecutionStatus, Error> {
-    let mut conn = db().await?;
-    log::info!("Loading execution status {}", id);
-    let status: ExecutionStatus = sqlx::query_as!(
-        StatusQuery,
-        "
-        SELECT status
-        FROM executions
-        WHERE id = $1
-        ",
-        id
-    )
-    .fetch_one(&mut conn)
-    .await?
-    .status
-    .into();
-    Ok(status)
-}
-
-pub async fn execution_success(id: i64) -> Result<(), Error> {
-    execution_set_status(id, 0).await
-}
-
-pub async fn execution_failure(id: i64) -> Result<(), Error> {
-    execution_set_status(id, 1).await
-}
-
-async fn execution_set_status(id: i64, status: i64) -> Result<(), Error> {
-    let mut conn = db().await?;
-    log::info!("Setting execution {} to {}", id, status);
-    sqlx::query!(
-        "
-        UPDATE executions
-        SET
-            status = $2,
-            end_time = datetime('now')
-        WHERE id = $1
-        ",
-        id,
-        status
-    )
-    .execute(&mut conn)
-    .await?;
-    Ok(())
-}
-
-pub async fn execution_ids() -> Result<Vec<i64>, Error> {
-    let mut conn = db().await?;
-    log::info!("Getting executions");
-    let ids = sqlx::query_as!(
-        ExecutionQuery,
-        "
-        SELECT id
-        FROM executions
-        ORDER BY id DESC
-        "
-    )
-    .fetch_all(&mut conn)
-    .await?
-    .into_iter()
-    .map(|query| query.id)
-    .collect();
-    Ok(ids)
-}
-
+pub mod execution;
 pub struct Stage {
     pub id: i64,
     pub dependency: Option<i64>,
@@ -135,24 +55,6 @@ pub async fn stages(job_id: i64) -> Result<Vec<Stage>, Error> {
     Ok(stages)
 }
 
-pub async fn execution_duration(id: i64) -> Result<Option<i64>, Error> {
-    let mut conn = db().await?;
-    log::info!("Fetch execution duration for {}", id);
-    let duration = sqlx::query_as!(
-        DurationQuery,
-        "
-        SELECT unixepoch(end_time) - unixepoch(start_time) AS duration
-        FROM executions
-        WHERE id = $1
-        ",
-        id
-    )
-    .fetch_one(&mut conn)
-    .await?
-    .duration;
-    Ok(duration)
-}
-
 pub async fn stage_create(
     job_id: i64,
     dependency: i64,
@@ -170,18 +72,6 @@ pub async fn stage_create(
     .execute(&mut conn)
     .await?;
     Ok(())
-}
-
-struct DurationQuery {
-    duration: Option<i64>,
-}
-
-struct ExecutionQuery {
-    id: i64,
-}
-
-struct StatusQuery {
-    status: Option<i64>,
 }
 
 pub enum ExecutionStatus {

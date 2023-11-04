@@ -69,15 +69,15 @@ pub async fn add_job(source: String) -> Result<(), ServerFnError> {
 pub async fn execute_job(job_id: i64) -> Result<(), ServerFnError> {
     log::info!("Running job with id {}", job_id);
     let source = osprei_storage::job::source(job_id).await?;
-    let execution_id = osprei_storage::execution_create(job_id).await?;
+    let execution_id = osprei_storage::execution::create(job_id).await?;
     tokio::spawn(async move {
         let stages = vec![];
         match osprei_execution::execute(source, stages).await {
             Ok(()) => {
-                let _ = osprei_storage::execution_success(execution_id).await;
+                let _ = osprei_storage::execution::success(execution_id).await;
             }
             Err(_) => {
-                let _ = osprei_storage::execution_failure(execution_id).await;
+                let _ = osprei_storage::execution::failure(execution_id).await;
             }
         }
     });
@@ -105,13 +105,13 @@ pub async fn load_job_status(id: i64) -> Result<String, ServerFnError> {
 
 #[server]
 pub async fn load_execution_list() -> Result<Vec<i64>, ServerFnError> {
-    let executions = osprei_storage::execution_ids().await?;
+    let executions = osprei_storage::execution::ids().await?;
     Ok(executions)
 }
 
 #[server]
 pub async fn load_execution_status(id: i64) -> Result<String, ServerFnError> {
-    let status = osprei_storage::execution_status(id).await?;
+    let status = osprei_storage::execution::status(id).await?;
     let message = match status {
         osprei_storage::ExecutionStatus::Running => "Running".to_string(),
         osprei_storage::ExecutionStatus::Success => "Success".to_string(),
@@ -123,6 +123,6 @@ pub async fn load_execution_status(id: i64) -> Result<String, ServerFnError> {
 
 #[server]
 pub async fn load_execution_duration(id: i64) -> Result<Option<i64>, ServerFnError> {
-    let duration = osprei_storage::execution_duration(id).await?;
+    let duration = osprei_storage::execution::duration(id).await?;
     Ok(duration)
 }
