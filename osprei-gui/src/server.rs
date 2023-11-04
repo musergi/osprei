@@ -35,7 +35,7 @@ pub async fn load_executions() -> Result<Vec<widget::Execution>, ServerFnError> 
 
 #[server]
 pub async fn load_stages(job_id: i64) -> Result<Vec<widget::Stage>, ServerFnError> {
-    let stages = osprei_storage::stages(job_id)
+    let stages = osprei_storage::stages::for_job(job_id)
         .await?
         .into_iter()
         .map(
