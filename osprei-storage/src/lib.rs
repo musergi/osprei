@@ -1,73 +1,6 @@
 use sqlx::Connection;
 
-pub async fn job_ids() -> Result<Vec<i64>, Error> {
-    let mut conn = db().await?;
-    log::info!("Loading jobs");
-    let jobs = sqlx::query_as!(
-        JobId,
-        "
-        SELECT id
-        FROM jobs
-        "
-    )
-    .fetch_all(&mut conn)
-    .await?
-    .into_iter()
-    .map(|job| job.id)
-    .collect();
-    Ok(jobs)
-}
-
-pub async fn job_source(id: i64) -> Result<String, Error> {
-    let mut conn = db().await?;
-    log::info!("Loading job source {}", id);
-    let job = sqlx::query_as!(
-        JobSource,
-        "
-        SELECT source
-        FROM jobs
-        WHERE id = $1
-        ",
-        id
-    )
-    .fetch_one(&mut conn)
-    .await?;
-    Ok(job.source)
-}
-
-pub async fn job_status(id: i64) -> Result<Option<ExecutionStatus>, Error> {
-    let mut conn = db().await?;
-    log::info!("Loading job status {}", id);
-    let status: Option<ExecutionStatus> = sqlx::query_as!(
-        StatusQuery,
-        "
-        SELECT status
-        FROM (
-            jobs
-            INNER JOIN
-                executions ON executions.job = jobs.id
-        )
-        WHERE jobs.id = $1
-        ORDER BY executions.id DESC
-        LIMIT 1
-        ",
-        id
-    )
-    .fetch_optional(&mut conn)
-    .await?
-    .map(|query| query.status.into());
-    Ok(status)
-}
-
-pub async fn job_create(source: String) -> Result<(), Error> {
-    log::info!("Adding job with source {}", source);
-    let mut conn = db().await?;
-    sqlx::query!("INSERT INTO jobs (source) VALUES ($1)", source)
-        .execute(&mut conn)
-        .await?;
-    log::info!("Added");
-    Ok(())
-}
+pub mod job;
 
 pub async fn execution_create(job_id: i64) -> Result<i64, Error> {
     let mut conn = db().await?;
@@ -267,14 +200,6 @@ impl From<Option<i64>> for ExecutionStatus {
             _ => Self::Unknown,
         }
     }
-}
-
-struct JobSource {
-    source: String,
-}
-
-struct JobId {
-    id: i64,
 }
 
 async fn db() -> Result<sqlx::SqliteConnection, Error> {

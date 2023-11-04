@@ -5,7 +5,7 @@ use crate::widget;
 
 #[server]
 pub async fn load_jobs() -> Result<Vec<widget::Job>, ServerFnError> {
-    let ids = osprei_storage::job_ids().await?;
+    let ids = osprei_storage::job::ids().await?;
     let mut jobs = Vec::new();
     for id in ids {
         let source = load_job_source(id).await?;
@@ -55,20 +55,20 @@ pub async fn load_stages(job_id: i64) -> Result<Vec<widget::Stage>, ServerFnErro
 
 #[server]
 pub async fn load_job_list() -> Result<Vec<i64>, ServerFnError> {
-    let jobs = osprei_storage::job_ids().await?;
+    let jobs = osprei_storage::job::ids().await?;
     Ok(jobs)
 }
 
 #[server(AddJob)]
 pub async fn add_job(source: String) -> Result<(), ServerFnError> {
-    osprei_storage::job_create(source).await?;
+    osprei_storage::job::create(source).await?;
     Ok(())
 }
 
 #[server(ExecuteJob)]
 pub async fn execute_job(job_id: i64) -> Result<(), ServerFnError> {
     log::info!("Running job with id {}", job_id);
-    let source = osprei_storage::job_source(job_id).await?;
+    let source = osprei_storage::job::source(job_id).await?;
     let execution_id = osprei_storage::execution_create(job_id).await?;
     tokio::spawn(async move {
         let stages = vec![];
@@ -86,13 +86,13 @@ pub async fn execute_job(job_id: i64) -> Result<(), ServerFnError> {
 
 #[server]
 pub async fn load_job_source(id: i64) -> Result<String, ServerFnError> {
-    let source = osprei_storage::job_source(id).await?;
+    let source = osprei_storage::job::source(id).await?;
     Ok(source)
 }
 
 #[server]
 pub async fn load_job_status(id: i64) -> Result<String, ServerFnError> {
-    let status = osprei_storage::job_status(id).await?;
+    let status = osprei_storage::job::status(id).await?;
     let message = match status {
         None => "Not executed".to_string(),
         Some(osprei_storage::ExecutionStatus::Running) => "Running".to_string(),
