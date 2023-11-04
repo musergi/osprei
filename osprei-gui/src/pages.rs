@@ -64,14 +64,34 @@ pub fn job() -> impl IntoView {
     let stages = create_resource(job_id, |id| async move {
         load_stages(id.parse().unwrap()).await
     });
+    let (dependency, set_dependency) = create_signal(None::<i64>);
     view! {
         <Suspense fallback=move || view! { <p>"Loading..."</p> }>
             <ErrorBoundary fallback=|errors| view! { <ErrorTemplate errors/> }>
                 <p>{move || source.get()}</p>
                 <p>{move || status.get()}</p>
-                {move || stages.get().map(|stages| stages.map(|stages| view! { <Stages stages/> }))}
+                {move || {
+                    stages
+                        .get()
+                        .map(|stages| {
+                            stages
+                                .map(|stages| {
+                                    view! { <Stages stages set_as_parent=set_dependency/> }
+                                })
+                        })
+                }}
+
+                {move || view! { <StageForm dependency=dependency.get()/> }}
             </ErrorBoundary>
         </Suspense>
+    }
+}
+
+#[component]
+fn stage_form(dependency: Option<i64>) -> impl IntoView {
+    match dependency {
+        None => view! { <p>"Press a stage to add a new one depending on it"</p> },
+        Some(dependency) => view! { <p>"After " <strong>{dependency}</strong></p> },
     }
 }
 

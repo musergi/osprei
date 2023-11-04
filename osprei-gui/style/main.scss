@@ -72,3 +72,22 @@ body {
 	margin-left: 1em;
 	margin-right: 0.5em;
 }
+
+.add-stage-button {
+	background-color: #00FF00AA;
+	border: none;
+	border-radius: 0.4em;
+	padding: 0.4em 1em;
+	text-align: center;
+	text-decoration: none;
+	display: inline-block;
+	margin: 0 0.25em;
+}
+
+.add-stage-button:hover {
+	background-color: #00FF00FF;
+}
+
+.stage {
+	margin: 0.25em 0;
+}

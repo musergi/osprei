@@ -16,58 +16,66 @@ pub struct Stage {
 }
 
 #[component]
-pub fn stages(stages: Vec<Stage>) -> impl IntoView {
-    let arena = Arena::new(stages);
+pub fn stages(stages: Vec<Stage>, set_as_parent: WriteSignal<Option<i64>>) -> impl IntoView {
+    let root = StageWithChildren::new(&stages);
     view! {
         <div style="text-align: left">
             <ul>
-            <Node arena idx=0/>
+                <Node node=root set_as_parent/>
             </ul>
         </div>
     }
 }
 
 #[component]
-fn node(arena: Arena, idx: usize) -> impl IntoView {
-    let Node { children, name, .. } = arena.nodes.get(idx).unwrap();
+fn node(node: StageWithChildren, set_as_parent: WriteSignal<Option<i64>>) -> impl IntoView {
+    let StageWithChildren { id, name, children } = node;
     let children = children
         .into_iter()
-        .map(|&child| {
-            let arena = arena.clone();
-            view! {<Node arena idx=child/>}
+        .map(|node| {
+            view! { <Node node set_as_parent/> }
         })
         .collect_view();
-    view! { <li>{name} <ul>{children}</ul></li>}
-}
-
-#[derive(Clone)]
-struct Arena {
-    nodes: Vec<Node>,
-}
-
-impl Arena {
-    fn new(stages: Vec<Stage>) -> Arena {
-        let mut nodes: Vec<_> = stages
-            .iter()
-            .map(|stage| Node {
-                children: Vec::new(),
-                stage: stage.id,
-                name: stage.description.clone(),
-            })
-            .collect();
-        for (idx, stage) in stages.iter().enumerate() {
-            if let Some(dependency) = stage.dependency {
-                let src = nodes.iter().position(|n| n.stage == dependency).unwrap();
-                nodes.get_mut(src).unwrap().children.push(idx);
-            }
-        }
-        Arena { nodes }
+    let set = move |_| {
+        set_as_parent.set(Some(id));
+    };
+    view! {
+        <li class="stage">
+            <strong>"(" {id} ")"</strong>
+            <span>{name}</span>
+            <button class="add-stage-button" on:click=set>
+                "Add"
+            </button>
+            <ul>{children}</ul>
+        </li>
     }
 }
 
-#[derive(Clone)]
-struct Node {
-    children: Vec<usize>,
-    stage: i64,
+struct StageWithChildren {
+    id: i64,
     name: String,
+    children: Vec<StageWithChildren>,
+}
+
+impl StageWithChildren {
+    fn new(stages: &[Stage]) -> StageWithChildren {
+        StageWithChildren::new_recursive(stages, 0)
+    }
+
+    fn new_recursive(stages: &[Stage], idx: usize) -> StageWithChildren {
+        let Stage {
+            id, description, ..
+        } = stages.get(idx).expect("invalid reference");
+        let children = stages
+            .iter()
+            .enumerate()
+            .filter(|(_, stage)| stage.dependency.map(|dep| dep == *id).unwrap_or(false))
+            .map(|(idx, _)| StageWithChildren::new_recursive(stages, idx))
+            .collect();
+        StageWithChildren {
+            id: *id,
+            name: description.to_string(),
+            children,
+        }
+    }
 }
