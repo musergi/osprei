@@ -99,11 +99,10 @@ pub async fn add_job(source: String) -> Result<(), ServerFnError> {
 #[server(ExecuteJob)]
 pub async fn execute_job(job_id: i64) -> Result<(), ServerFnError> {
     log::info!("Running job with id {}", job_id);
-    let source = osprei_storage::job::source(job_id).await?;
+    let stages = osprei_storage::stages::for_job(job_id).await?;
     let execution_id = osprei_storage::execution::create(job_id).await?;
     tokio::spawn(async move {
-        let stages = vec![];
-        match osprei_execution::execute(source, stages).await {
+        match osprei_execution::execute(stages).await {
             Ok(()) => {
                 let _ = osprei_storage::execution::success(execution_id).await;
             }

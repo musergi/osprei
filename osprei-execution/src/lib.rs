@@ -1,26 +1,15 @@
 pub struct Stage {
     pub command: Vec<String>,
+    pub working_dir: String,
+    pub environment: Vec<(String, String)>,
 }
 
-pub async fn execute(source: String, stages: Vec<Stage>) -> Result<(), Error> {
+pub async fn execute(stages: Vec<Stage>) -> Result<(), Error> {
     let engine = Engine::new().unwrap();
     engine
         .with_volume(|engine, volume| async move {
-            if !engine
-                .run(
-                    vec!["git", "clone", &source, "code"],
-                    "/workspaces",
-                    volume.name(),
-                )
-                .await?
-            {
-                return Err(Error::Checkout);
-            }
             for stage in stages {
-                if !engine
-                    .run(stage.command, "/workspaces/code", volume.name())
-                    .await?
-                {
+                if !engine.run("rust:latest", stage, volume.name()).await? {
                     return Err(Error::Execution);
                 }
             }
@@ -58,20 +47,23 @@ impl Engine {
         result
     }
 
-    async fn run<S>(
+    async fn run(
         &self,
-        command: impl IntoIterator<Item = S>,
-        working_dir: impl serde::Serialize,
+        image: impl serde::Serialize,
+        stage: Stage,
         volume: impl std::fmt::Display,
-    ) -> Result<bool, Error>
-    where
-        S: serde::Serialize,
-    {
+    ) -> Result<bool, Error> {
+        let env: Vec<_> = stage
+            .environment
+            .into_iter()
+            .map(|(name, value)| format!("{}={}", name, value))
+            .collect();
         let opts = docker_api::opts::ContainerCreateOpts::builder()
-            .image("rust:latest")
-            .volumes(vec![format!("{}:/workspaces", volume)])
-            .working_dir(working_dir)
-            .command(command)
+            .image(image)
+            .volumes(vec![format!("{}:/workspace", volume)])
+            .working_dir(stage.working_dir)
+            .command(stage.command)
+            .env(env)
             .build();
         let container = self.docker.containers().create(&opts).await?;
         log::info!("Created container: {}", container.id());
