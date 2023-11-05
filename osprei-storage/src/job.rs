@@ -1,4 +1,4 @@
-use crate::{db, Error, ExecutionStatus};
+use crate::{db, stages::create_checkout, Error, ExecutionStatus};
 
 pub async fn ids() -> Result<Vec<i64>, Error> {
     let mut conn = db().await?;
@@ -73,7 +73,7 @@ pub async fn status(id: i64) -> Result<Option<ExecutionStatus>, Error> {
 pub async fn create(source: String) -> Result<(), Error> {
     let mut conn = db().await?;
     log::info!("Insert ({source})");
-    sqlx::query!(
+    let id = sqlx::query!(
         "
         INSERT INTO jobs
         (source)
@@ -81,7 +81,9 @@ pub async fn create(source: String) -> Result<(), Error> {
         source
     )
     .execute(&mut conn)
-    .await?;
+    .await?
+    .last_insert_rowid();
+    create_checkout(id, source).await?;
     log::info!("Inserted");
     Ok(())
 }

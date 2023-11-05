@@ -67,6 +67,26 @@ pub async fn add_stage(
     template: String,
 ) -> Result<(), ServerFnError> {
     log::info!("AddStage {job_id} {name} {dependency} {template}");
+    let definition = match template.as_str() {
+        "sqlx" => Some(osprei_storage::stages::Definition {
+            name,
+            command: vec![
+                "sqlx".to_string(),
+                "database".to_string(),
+                "setup".to_string(),
+            ],
+            environment: vec![osprei_storage::stages::EnvironmentVariable {
+                name: "DATABASE_URL".to_string(),
+                value: "sqlite:testing.db".to_string(),
+            }],
+            working_dir: osprei_storage::stages::CHECKOUT_DIR.to_string(),
+        }),
+        _ => None,
+    };
+    match definition {
+        Some(definition) => osprei_storage::stages::create(job_id, dependency, definition).await?,
+        None => log::warn!("Unknown template {template}"),
+    }
     Ok(())
 }
 
