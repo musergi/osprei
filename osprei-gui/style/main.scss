@@ -64,10 +64,6 @@ body {
 	padding: 1em 0;
 }
 
-.add-job-form {
-	padding: 1em 0;
-}
-
 .add-job-form label input {
 	margin-left: 1em;
 	margin-right: 0.5em;
@@ -90,4 +86,25 @@ body {
 
 .stage {
 	margin: 0.25em 0;
+}
+
+.add-stage-form {
+	padding: 1em 1em;
+	margin: auto;
+	text-align: left;
+}
+
+.add-stage-form label {
+	display: block;
+	color: gray;
+	padding: 0.3em 0;
+}
+
+.add-stage-form input {
+	color: black;
+	margin-left: 1em;
+}
+
+.add-stage-form input:read-only {
+	margin-left: 1em;
 }

@@ -1,6 +1,7 @@
 use crate::server::*;
 use crate::widget::ExecutionTable;
 use crate::widget::JobTable;
+use crate::widget::StageForm;
 use crate::widget::Stages;
 use leptos::*;
 use leptos_router::*;
@@ -55,6 +56,11 @@ pub fn home() -> impl IntoView {
 pub fn job() -> impl IntoView {
     let params = use_params_map();
     let job_id = move || params.with(|p| p.get("id").cloned().unwrap_or_default());
+
+    let (dependency, set_dependency) = create_signal(None::<i64>);
+
+    let add_stage = create_server_action::<AddStage>();
+
     let source = create_resource(job_id, |id| async move {
         load_job_source(id.parse().unwrap()).await
     });
@@ -64,7 +70,7 @@ pub fn job() -> impl IntoView {
     let stages = create_resource(job_id, |id| async move {
         load_stages(id.parse().unwrap()).await
     });
-    let (dependency, set_dependency) = create_signal(None::<i64>);
+
     view! {
         <Suspense fallback=move || view! { <p>"Loading..."</p> }>
             <ErrorBoundary fallback=|errors| view! { <ErrorTemplate errors/> }>
@@ -80,18 +86,9 @@ pub fn job() -> impl IntoView {
                                 })
                         })
                 }}
-
-                {move || view! { <StageForm dependency=dependency.get()/> }}
+                {move || view! { <StageForm dependency=dependency.get() action=add_stage/> }}
             </ErrorBoundary>
         </Suspense>
-    }
-}
-
-#[component]
-fn stage_form(dependency: Option<i64>) -> impl IntoView {
-    match dependency {
-        None => view! { <p>"Press a stage to add a new one depending on it"</p> },
-        Some(dependency) => view! { <p>"After " <strong>{dependency}</strong></p> },
     }
 }
 

@@ -59,6 +59,17 @@ pub async fn load_job_list() -> Result<Vec<i64>, ServerFnError> {
     Ok(jobs)
 }
 
+#[server(AddStage)]
+pub async fn add_stage(
+    job_id: i64,
+    name: String,
+    dependency: i64,
+    template: String,
+) -> Result<(), ServerFnError> {
+    log::info!("AddStage {job_id} {name} {dependency} {template}");
+    Ok(())
+}
+
 #[server(AddJob)]
 pub async fn add_job(source: String) -> Result<(), ServerFnError> {
     osprei_storage::job::create(source).await?;
