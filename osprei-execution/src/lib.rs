@@ -1,15 +1,11 @@
-pub struct Stage {
-    pub command: Vec<String>,
-    pub working_dir: String,
-    pub environment: Vec<(String, String)>,
-}
+use osprei_data::StageDefinition;
 
-pub async fn execute(stages: Vec<Stage>) -> Result<(), Error> {
+pub async fn execute(stages: Vec<StageDefinition>) -> Result<(), Error> {
     let engine = Engine::new().unwrap();
     engine
         .with_volume(|engine, volume| async move {
             for stage in stages {
-                if !engine.run("rust:latest", stage, volume.name()).await? {
+                if !engine.run(stage, volume.name()).await? {
                     return Err(Error::Execution);
                 }
             }
@@ -49,17 +45,16 @@ impl Engine {
 
     async fn run(
         &self,
-        image: impl serde::Serialize,
-        stage: Stage,
+        stage: StageDefinition,
         volume: impl std::fmt::Display,
     ) -> Result<bool, Error> {
         let env: Vec<_> = stage
             .environment
             .into_iter()
-            .map(|(name, value)| format!("{}={}", name, value))
+            .map(|var| format!("{}={}", var.name, var.value))
             .collect();
         let opts = docker_api::opts::ContainerCreateOpts::builder()
-            .image(image)
+            .image(stage.image)
             .volumes(vec![format!("{}:/workspace", volume)])
             .working_dir(stage.working_dir)
             .command(stage.command)
@@ -67,12 +62,18 @@ impl Engine {
             .build();
         let container = self.docker.containers().create(&opts).await?;
         log::info!("Created container: {}", container.id());
-        container.start().await?;
+        if let Err(err) = container.start().await {
+            log::error!("Container failed to start: {err}");
+            let _ = container.delete().await?;
+            return Err(err.into());
+        }
         log::info!("Started container: {}", container.id());
         log::info!("Waiting container: {}", container.id());
         let success = container.wait().await?.status_code == 0;
-        container.delete().await?;
-        log::info!("Deleted container: {}", container.id());
+        if success {
+            container.delete().await?;
+            log::info!("Deleted container: {}", container.id());
+        }
         Ok(success)
     }
 }
@@ -80,8 +81,16 @@ impl Engine {
 #[derive(Debug)]
 pub enum Error {
     Docker(docker_api::Error),
-    Checkout,
     Execution,
+}
+
+impl std::fmt::Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            Error::Docker(err) => write!(f, "docker error: {err}"),
+            Error::Execution => write!(f, "stage failed"),
+        }
+    }
 }
 
 impl From<docker_api::Error> for Error {

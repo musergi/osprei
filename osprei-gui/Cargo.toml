@@ -16,6 +16,7 @@ leptos_axum = { version = "0.5", optional = true }
 leptos_meta = { version = "0.5" }
 leptos_router = { version = "0.5" }
 log = { workspace = true }
+osprei-data = { path = "../osprei-data", optional = true }
 osprei-execution = { path = "../osprei-execution", optional = true }
 osprei-storage = { path = "../osprei-storage", optional = true }
 simple_logger = "4"
@@ -40,6 +41,7 @@ ssr = [
     "leptos_meta/ssr",
     "leptos_router/ssr",
     "dep:tracing",
+    "dep:osprei-data",
     "dep:osprei-execution",
     "dep:osprei-storage",
 ]

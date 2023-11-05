@@ -1,5 +1,5 @@
 [workspace]
-members = ["osprei-gui", "osprei-execution", "osprei-storage"]
+members = ["osprei-gui", "osprei-execution", "osprei-storage", "osprei-data"]
 resolver = "2"
 
 [workspace.dependencies]

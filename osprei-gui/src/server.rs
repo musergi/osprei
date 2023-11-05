@@ -3,6 +3,8 @@ use leptos::ServerFnError;
 
 use crate::widget;
 
+const SQLX_IMAGE: &str = "ghcr.io/musergi/sqlx:latest";
+
 #[server]
 pub async fn load_jobs() -> Result<Vec<widget::Job>, ServerFnError> {
     let ids = osprei_storage::job::ids().await?;
@@ -68,14 +70,15 @@ pub async fn add_stage(
 ) -> Result<(), ServerFnError> {
     log::info!("AddStage {job_id} {name} {dependency} {template}");
     let definition = match template.as_str() {
-        "sqlx" => Some(osprei_storage::stages::Definition {
+        "sqlx" => Some(osprei_data::StageDefinition {
             name,
+            image: SQLX_IMAGE.to_string(),
             command: vec![
                 "sqlx".to_string(),
                 "database".to_string(),
                 "setup".to_string(),
             ],
-            environment: vec![osprei_storage::stages::EnvironmentVariable {
+            environment: vec![osprei_data::EnvironmentVariable {
                 name: "DATABASE_URL".to_string(),
                 value: "sqlite:testing.db".to_string(),
             }],
@@ -99,14 +102,19 @@ pub async fn add_job(source: String) -> Result<(), ServerFnError> {
 #[server(ExecuteJob)]
 pub async fn execute_job(job_id: i64) -> Result<(), ServerFnError> {
     log::info!("Running job with id {}", job_id);
-    let stages = osprei_storage::stages::for_job(job_id).await?;
+    let stages: Vec<_> = osprei_storage::stages::for_job(job_id)
+        .await?
+        .into_iter()
+        .map(|stage| stage.definition)
+        .collect();
     let execution_id = osprei_storage::execution::create(job_id).await?;
     tokio::spawn(async move {
         match osprei_execution::execute(stages).await {
             Ok(()) => {
                 let _ = osprei_storage::execution::success(execution_id).await;
             }
-            Err(_) => {
+            Err(err) => {
+                log::error!("Execution error: {err}");
                 let _ = osprei_storage::execution::failure(execution_id).await;
             }
         }

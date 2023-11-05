@@ -1862,11 +1862,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dd8b5dd2ae5ed71462c540258bedcb51965123ad7e7ccf4b9a8cafaa4a63576d"
 
 [[package]]
+name = "osprei-data"
+version = "0.1.0"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "osprei-execution"
 version = "0.1.0"
 dependencies = [
  "docker-api",
  "log",
+ "osprei-data",
  "serde",
 ]
 
@@ -1884,6 +1892,7 @@ dependencies = [
  "leptos_meta",
  "leptos_router",
  "log",
+ "osprei-data",
  "osprei-execution",
  "osprei-storage",
  "serde",
@@ -1901,7 +1910,7 @@ name = "osprei-storage"
 version = "0.1.0"
 dependencies = [
  "log",
- "serde",
+ "osprei-data",
  "serde_json",
  "sqlx",
 ]

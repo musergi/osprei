@@ -1,26 +1,14 @@
 use crate::{db, Error};
+use osprei_data::StageDefinition;
 
 pub const WORKSPACE_DIR: &str = "/workspace";
 pub const CHECKOUT_DIR: &str = "/workspace/code";
+pub const GIT_IMAGE: &str = "rust:latest";
 
 pub struct Stage {
     pub id: i64,
     pub dependency: Option<i64>,
-    pub definition: Definition,
-}
-
-#[derive(serde::Serialize, serde::Deserialize)]
-pub struct Definition {
-    pub name: String,
-    pub command: Vec<String>,
-    pub environment: Vec<EnvironmentVariable>,
-    pub working_dir: String,
-}
-
-#[derive(serde::Serialize, serde::Deserialize)]
-pub struct EnvironmentVariable {
-    pub name: String,
-    pub value: String,
+    pub definition: osprei_data::StageDefinition,
 }
 
 pub async fn for_job(job_id: i64) -> Result<Vec<Stage>, Error> {
@@ -49,7 +37,7 @@ pub async fn for_job(job_id: i64) -> Result<Vec<Stage>, Error> {
         definition,
     } in query
     {
-        let definition: Definition = serde_json::from_str(&definition)?;
+        let definition: StageDefinition = serde_json::from_str(&definition)?;
         let stage = Stage {
             id,
             dependency,
@@ -60,15 +48,20 @@ pub async fn for_job(job_id: i64) -> Result<Vec<Stage>, Error> {
     Ok(stages)
 }
 
-pub async fn create(job_id: i64, dependency: i64, definition: Definition) -> Result<(), Error> {
+pub async fn create(
+    job_id: i64,
+    dependency: i64,
+    definition: StageDefinition,
+) -> Result<(), Error> {
     create_optional(job_id, Some(dependency), definition).await
 }
 
 pub(crate) async fn create_checkout(job_id: i64, source: String) -> Result<(), Error> {
     log::info!("Insert checkout for job ({job_id})");
     let command = checkout_command(source);
-    let definition = Definition {
+    let definition = StageDefinition {
         name: "checkout".to_string(),
+        image: GIT_IMAGE.to_string(),
         command,
         environment: Vec::new(),
         working_dir: WORKSPACE_DIR.to_string(),
@@ -88,7 +81,7 @@ fn checkout_command(source: String) -> Vec<String> {
 async fn create_optional(
     job_id: i64,
     dependency: Option<i64>,
-    definition: Definition,
+    definition: StageDefinition,
 ) -> Result<(), Error> {
     let mut conn = db().await?;
     log::info!("Insert for job ({job_id})");
