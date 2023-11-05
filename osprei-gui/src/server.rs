@@ -4,6 +4,7 @@ use leptos::ServerFnError;
 use crate::widget;
 
 const SQLX_IMAGE: &str = "ghcr.io/musergi/sqlx:latest";
+const RUST_IMAGE: &str = "rust:latest";
 
 #[server]
 pub async fn load_jobs() -> Result<Vec<widget::Job>, ServerFnError> {
@@ -78,6 +79,16 @@ pub async fn add_stage(
                 "database".to_string(),
                 "setup".to_string(),
             ],
+            environment: vec![osprei_data::EnvironmentVariable {
+                name: "DATABASE_URL".to_string(),
+                value: "sqlite:testing.db".to_string(),
+            }],
+            working_dir: osprei_storage::stages::CHECKOUT_DIR.to_string(),
+        }),
+        "build" => Some(osprei_data::StageDefinition {
+            name,
+            image: RUST_IMAGE.to_string(),
+            command: vec!["cargo".to_string(), "build".to_string()],
             environment: vec![osprei_data::EnvironmentVariable {
                 name: "DATABASE_URL".to_string(),
                 value: "sqlite:testing.db".to_string(),
