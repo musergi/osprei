@@ -1,4 +1,7 @@
-use crate::server::*;
+use crate::{
+    server::*,
+    widget::{ActionButtons, Button, ButtonType, Card},
+};
 use leptos::*;
 use leptos_router::*;
 
@@ -7,6 +10,54 @@ pub struct Job {
     pub id: i64,
     pub source: String,
     pub status: String,
+}
+
+#[component]
+pub fn job_list(
+    jobs: Vec<Job>,
+    action: Action<ExecuteJob, Result<(), ServerFnError>>,
+) -> impl IntoView {
+    let jobs = jobs
+        .into_iter()
+        .map(|job| view! {<JobCard job/>})
+        .collect_view();
+    view! {
+        <div>{jobs}</div>
+    }
+}
+
+pub fn capitalize(s: &str) -> String {
+    let mut c = s.chars();
+    match c.next() {
+        None => String::new(),
+        Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
+    }
+}
+
+#[component]
+pub fn job_card(job: Job) -> impl IntoView {
+    let Job { source, status, .. } = job;
+    let title = source
+        .split_once("://")
+        .unwrap()
+        .1
+        .split("/")
+        .last()
+        .unwrap()
+        .split_once(".")
+        .unwrap()
+        .0;
+    let title = capitalize(title);
+    view! {
+        <Card title>
+            <p>{status}</p>
+            <p>"1h ago"</p>
+            <ActionButtons>
+                <Button button_type=ButtonType::Secondary>"Details"</Button>
+                <Button>"Run"</Button>
+            </ActionButtons>
+        </Card>
+    }
 }
 
 #[component]
