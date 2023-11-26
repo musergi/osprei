@@ -1,7 +1,4 @@
-use crate::{
-    server::*,
-    widget::{ActionButtons, Button, ButtonType, Card},
-};
+use crate::{server::*, widget::*};
 use leptos::*;
 use leptos_router::*;
 
@@ -12,14 +9,13 @@ pub struct Job {
     pub status: String,
 }
 
+type RunJobAction = Action<ExecuteJob, Result<(), ServerFnError>>;
+
 #[component]
-pub fn job_list(
-    jobs: Vec<Job>,
-    action: Action<ExecuteJob, Result<(), ServerFnError>>,
-) -> impl IntoView {
+pub fn job_list(jobs: Vec<Job>, action: RunJobAction) -> impl IntoView {
     let jobs = jobs
         .into_iter()
-        .map(|job| view! {<JobCard job/>})
+        .map(|job| view! {<JobCard job action/>})
         .collect_view();
     view! {
         <div>{jobs}</div>
@@ -35,8 +31,8 @@ pub fn capitalize(s: &str) -> String {
 }
 
 #[component]
-pub fn job_card(job: Job) -> impl IntoView {
-    let Job { source, status, .. } = job;
+pub fn job_card(job: Job, action: RunJobAction) -> impl IntoView {
+    let Job { id, source, status } = job;
     let title = source
         .split_once("://")
         .unwrap()
@@ -48,13 +44,16 @@ pub fn job_card(job: Job) -> impl IntoView {
         .unwrap()
         .0;
     let title = capitalize(title);
+    let link = format!("/job/{id}");
     view! {
         <Card title>
             <p>{status}</p>
             <p>"1h ago"</p>
             <ActionButtons>
-                <Button button_type=ButtonType::Secondary>"Details"</Button>
-                <Button>"Run"</Button>
+                <LinkButton button_type=ButtonType::Secondary link text="Details"/>
+                <FormButton text="Run" action>
+                    <input type="text" hidden=true name="job_id" value={id}/>
+                </FormButton>
             </ActionButtons>
         </Card>
     }

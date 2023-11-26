@@ -19,5 +19,4 @@ pub use card::ActionButtons;
 pub use card::Card;
 
 mod button;
-pub use button::Button;
-pub use button::ButtonType;
+pub use button::*;
