@@ -1,4 +1,4 @@
-use crate::server::AddStage;
+use crate::server::{load_stage_templates, AddStage};
 use leptos::*;
 use leptos_router::*;
 
@@ -18,13 +18,23 @@ fn dependency_stage_form(
     dependency: i64,
     action: Action<AddStage, Result<(), ServerFnError>>,
 ) -> impl IntoView {
-    view! {
-        <ActionForm class="add-stage-form" action>
-            <input name="job_id" type="number" value=1 hidden=true/>
-            <label>"Depends on" <input type="number" name="dependency" value={dependency} readonly/></label>
-            <label>"Name" <input type="text" name="name"/></label>
-            <label>"Template" <input type="text" name="template"/></label>
-            <input type="submit" value="Add"/>
-        </ActionForm>
+    let templates = create_resource(|| (), |_| async { load_stage_templates().await });
+    {
+        move || {
+            templates.get().map(|templates| {
+                templates.map(|templates| {
+                    let options = templates.into_iter().map(|template| view!{<option value={template.clone()}>{template}</option>}).collect_view();
+                    view! {
+                        <ActionForm class="add-stage-form" action>
+                            <input name="job_id" type="number" value=1 hidden=true/>
+                            <label>"Depends on" <input type="number" name="dependency" value={dependency} readonly/></label>
+                            <label>"Name" <input type="text" name="name"/></label>
+                            <label>"Template" <select name="template">{options}</select></label>
+                            <input type="submit" value="Add"/>
+                        </ActionForm>
+                    }
+                })
+            })
+        }
     }
 }

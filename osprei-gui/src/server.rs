@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use leptos::server;
 use leptos::ServerFnError;
 
@@ -102,6 +104,11 @@ pub async fn add_stage(
         None => log::warn!("Unknown template {template}"),
     }
     Ok(())
+}
+
+#[server]
+pub async fn load_stage_templates() -> Result<Vec<String>, ServerFnError> {
+    Ok(vec!["sqlx".into(), "build".into()])
 }
 
 #[server(AddJob)]
