@@ -1,9 +1,9 @@
-CREATE TABLE IF NOT EXISTS jobs (
+CREATE TABLE jobs (
     id INTEGER PRIMARY KEY,
     source TEXT NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS executions (
+CREATE TABLE executions (
     id INTEGER PRIMARY KEY,
     job INTEGER,
     status INTEGER,
@@ -12,11 +12,57 @@ CREATE TABLE IF NOT EXISTS executions (
     FOREIGN KEY(job) REFERENCES jobs(id)
 );
 
-CREATE TABLE IF NOT EXISTS stages (
+CREATE TABLE stages (
     id INTEGER PRIMARY KEY,
     dependency INTEGER,
     job INTEGER,
     definition TEXT NOT NULL,
     FOREIGN KEY(job) REFERENCES jobs(id),
     FOREIGN KEY(dependency) REFERENCES stages(id)
+);
+
+CREATE TABLE templates (
+    name TEXT NOT NULL,
+    definition TEXT NOT NULL
+);
+
+INSERT INTO templates (
+    name,
+    definition
+) VALUES (
+    'sqlx',
+    '{
+        "name": "sqlx",
+        "command": [
+            "sqlx",
+            "database",
+            "setup"
+        ],
+        environment: [
+            {
+                "name": "DATABASE_URL",
+                "value": "sqlite:testing.db"
+            }
+        ]
+    }'
+);
+
+INSERT INTO templates (
+    name,
+    definition
+) VALUES (
+    'build',
+    '{
+        "name": "build",
+        "command": [
+            "cargo",
+            "build"
+        ],
+        environment: [
+            {
+                "name": "DATABASE_URL",
+                "value": "sqlite:testing.db"
+            }
+        ]
+    }'
 );

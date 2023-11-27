@@ -7,6 +7,8 @@ pub mod execution;
 pub mod stages;
 pub use stages::Stage;
 
+pub mod templates;
+
 pub enum ExecutionStatus {
     Running,
     Success,

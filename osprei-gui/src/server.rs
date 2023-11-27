@@ -1,9 +1,6 @@
-use std::collections::HashMap;
-
+use crate::widget;
 use leptos::server;
 use leptos::ServerFnError;
-
-use crate::widget;
 
 const SQLX_IMAGE: &str = "ghcr.io/musergi/sqlx:latest";
 const RUST_IMAGE: &str = "rust:latest";
@@ -107,8 +104,9 @@ pub async fn add_stage(
 }
 
 #[server]
-pub async fn load_stage_templates() -> Result<Vec<String>, ServerFnError> {
-    Ok(vec!["sqlx".into(), "build".into()])
+pub async fn load_templates() -> Result<Vec<String>, ServerFnError> {
+    let templates = osprei_storage::templates::names().await?;
+    Ok(templates)
 }
 
 #[server(AddJob)]

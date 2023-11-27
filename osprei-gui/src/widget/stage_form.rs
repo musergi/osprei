@@ -1,4 +1,4 @@
-use crate::server::{load_stage_templates, AddStage};
+use crate::server::{load_templates, AddStage};
 use leptos::*;
 use leptos_router::*;
 
@@ -18,7 +18,7 @@ fn dependency_stage_form(
     dependency: i64,
     action: Action<AddStage, Result<(), ServerFnError>>,
 ) -> impl IntoView {
-    let templates = create_resource(|| (), |_| async { load_stage_templates().await });
+    let templates = create_resource(|| (), |_| async { load_templates().await });
     {
         move || {
             templates.get().map(|templates| {
