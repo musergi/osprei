@@ -12,3 +12,11 @@ pub struct EnvironmentVariable {
     pub name: String,
     pub value: String,
 }
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct Template {
+    pub name: String,
+    pub image: String,
+    pub command: Vec<String>,
+    pub environment: Vec<EnvironmentVariable>,
+}

@@ -68,38 +68,26 @@ pub async fn add_stage(
     dependency: i64,
     template: String,
 ) -> Result<(), ServerFnError> {
-    log::info!("AddStage {job_id} {name} {dependency} {template}");
-    let definition = match template.as_str() {
-        "sqlx" => Some(osprei_data::StageDefinition {
-            name,
-            image: SQLX_IMAGE.to_string(),
-            command: vec![
-                "sqlx".to_string(),
-                "database".to_string(),
-                "setup".to_string(),
-            ],
-            environment: vec![osprei_data::EnvironmentVariable {
-                name: "DATABASE_URL".to_string(),
-                value: "sqlite:testing.db".to_string(),
-            }],
-            working_dir: osprei_storage::stages::CHECKOUT_DIR.to_string(),
-        }),
-        "build" => Some(osprei_data::StageDefinition {
-            name,
-            image: RUST_IMAGE.to_string(),
-            command: vec!["cargo".to_string(), "build".to_string()],
-            environment: vec![osprei_data::EnvironmentVariable {
-                name: "DATABASE_URL".to_string(),
-                value: "sqlite:testing.db".to_string(),
-            }],
-            working_dir: osprei_storage::stages::CHECKOUT_DIR.to_string(),
-        }),
-        _ => None,
+    log::info!("AddStage id:{job_id} name:{name} depends_on:{dependency} template:{template}");
+    let osprei_data::Template {
+        image,
+        command,
+        environment,
+        ..
+    } = osprei_storage::templates::for_name(template)
+        .await
+        .map_err(|err| {
+            log::error!("Error fetching template: {err}");
+            err
+        })?;
+    let definition = osprei_data::StageDefinition {
+        name,
+        image,
+        command,
+        environment,
+        working_dir: osprei_storage::stages::CHECKOUT_DIR.to_string(),
     };
-    match definition {
-        Some(definition) => osprei_storage::stages::create(job_id, dependency, definition).await?,
-        None => log::warn!("Unknown template {template}"),
-    }
+    osprei_storage::stages::create(job_id, dependency, definition).await?;
     Ok(())
 }
 

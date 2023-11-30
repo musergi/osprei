@@ -33,12 +33,13 @@ INSERT INTO templates (
     'sqlx',
     '{
         "name": "sqlx",
+        "image": "ghcr.io/musergi/sqlx:latest",
         "command": [
             "sqlx",
             "database",
             "setup"
         ],
-        environment: [
+        "environment": [
             {
                 "name": "DATABASE_URL",
                 "value": "sqlite:testing.db"
@@ -54,11 +55,12 @@ INSERT INTO templates (
     'build',
     '{
         "name": "build",
+        "image": "rust:latest",
         "command": [
             "cargo",
             "build"
         ],
-        environment: [
+        "environment": [
             {
                 "name": "DATABASE_URL",
                 "value": "sqlite:testing.db"
