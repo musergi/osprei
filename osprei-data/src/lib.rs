@@ -2,7 +2,6 @@
 pub struct StageDefinition {
     pub name: String,
     pub image: String,
-    pub command: Vec<String>,
     pub environment: Vec<EnvironmentVariable>,
     pub working_dir: String,
 }
@@ -17,6 +16,5 @@ pub struct EnvironmentVariable {
 pub struct Template {
     pub name: String,
     pub image: String,
-    pub command: Vec<String>,
     pub environment: Vec<EnvironmentVariable>,
 }

@@ -57,7 +57,6 @@ impl Engine {
             .image(stage.image)
             .volumes(vec![format!("{}:/workspace", volume)])
             .working_dir(stage.working_dir)
-            .command(stage.command)
             .env(env)
             .build();
         let container = self.docker.containers().create(&opts).await?;

@@ -70,10 +70,7 @@ pub async fn add_stage(
 ) -> Result<(), ServerFnError> {
     log::info!("AddStage id:{job_id} name:{name} depends_on:{dependency} template:{template}");
     let osprei_data::Template {
-        image,
-        command,
-        environment,
-        ..
+        image, environment, ..
     } = osprei_storage::templates::for_name(template)
         .await
         .map_err(|err| {
@@ -83,7 +80,6 @@ pub async fn add_stage(
     let definition = osprei_data::StageDefinition {
         name,
         image,
-        command,
         environment,
         working_dir: osprei_storage::stages::CHECKOUT_DIR.to_string(),
     };

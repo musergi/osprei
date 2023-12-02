@@ -1,9 +1,10 @@
 use crate::{db, Error};
-use osprei_data::StageDefinition;
+use osprei_data::{EnvironmentVariable, StageDefinition};
 
 pub const WORKSPACE_DIR: &str = "/workspace";
 pub const CHECKOUT_DIR: &str = "/workspace/code";
-pub const GIT_IMAGE: &str = "rust:latest";
+pub const GIT_IMAGE: &str = "ghcr.io/musergi/osprei-git:latest";
+const SOURCE_ENV_VAR_NAME: &str = "SOURCE";
 
 pub struct Stage {
     pub id: i64,
@@ -58,24 +59,16 @@ pub async fn create(
 
 pub(crate) async fn create_checkout(job_id: i64, source: String) -> Result<(), Error> {
     log::info!("Insert checkout for job ({job_id})");
-    let command = checkout_command(source);
     let definition = StageDefinition {
         name: "checkout".to_string(),
         image: GIT_IMAGE.to_string(),
-        command,
-        environment: Vec::new(),
+        environment: vec![EnvironmentVariable {
+            name: SOURCE_ENV_VAR_NAME.to_string(),
+            value: source,
+        }],
         working_dir: WORKSPACE_DIR.to_string(),
     };
     create_optional(job_id, None, definition).await
-}
-
-fn checkout_command(source: String) -> Vec<String> {
-    vec![
-        "git".to_string(),
-        "clone".to_string(),
-        source,
-        CHECKOUT_DIR.to_string(),
-    ]
 }
 
 async fn create_optional(
